@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../config/supabaseClient';
 import ProfileSettings from './ProfileSettings';
 import Jobs from './Jobs';
+import Candidates from './Candidates';
+import Ranking from './Ranking';
+import CandidateDetails from './CandidateDetails';
 
 // Icon components
 const BriefcaseIcon = () => (
@@ -32,6 +35,30 @@ const ClockIcon = () => (
 const LayoutDashboardIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+  </svg>
+);
+
+const MenuBriefcaseIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+  </svg>
+);
+
+const UsersIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+  </svg>
+);
+
+const ChartBarIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+  </svg>
+);
+
+const MailIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
   </svg>
 );
 
@@ -74,19 +101,24 @@ export default function HRDashboard({ userName }: { userName?: string }) {
                 HR Dashboard
               </a>
             </li>
-            {['Jobs', 'Candidates', 'Ranking', 'Emails'].map((item) => {
-              const viewName = item.toLowerCase() as typeof currentView;
+            {[
+              { name: 'Jobs', icon: <MenuBriefcaseIcon /> },
+              { name: 'Candidates', icon: <UsersIcon /> },
+              { name: 'Ranking', icon: <ChartBarIcon /> },
+              { name: 'Emails', icon: <MailIcon /> }
+            ].map((item) => {
+              const viewName = item.name.toLowerCase() as typeof currentView;
               return (
-              <li key={item}>
+              <li key={item.name}>
                 <a 
                   href="#" 
                   onClick={(e) => { e.preventDefault(); setCurrentView(viewName); }}
                   className={`flex items-center px-8 py-2.5 transition-colors ${currentView === viewName ? 'text-white font-medium bg-white/5' : 'text-slate-300 hover:text-white'}`}
                 >
                   <span className="mr-3 opacity-60">
-                    <ChevronRightIcon />
+                    {item.icon}
                   </span>
-                  <span className="text-[15px]">{item}</span>
+                  <span className="text-[15px]">{item.name}</span>
                 </a>
               </li>
               );
@@ -346,6 +378,12 @@ export default function HRDashboard({ userName }: { userName?: string }) {
         <Jobs />
       ) : currentView === 'settings' ? (
         <ProfileSettings userName={userName} />
+      ) : currentView === 'candidates' ? (
+        <Candidates />
+      ) : currentView === 'candidate-details' ? (
+        <CandidateDetails onBack={() => setCurrentView('ranking')} />
+      ) : currentView === 'ranking' ? (
+        <Ranking onViewDetails={() => setCurrentView('candidate-details')} />
       ) : (
         <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
           <div className="max-w-4xl mx-auto flex items-center justify-center h-full">
