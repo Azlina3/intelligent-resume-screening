@@ -19,6 +19,7 @@ export default function CreateJob() {
   const [minRelevantExperience, setMinRelevantExperience] = useState('');
   const [educationLevel, setEducationLevel] = useState('');
   const [equivalentExperienceAccepted, setEquivalentExperienceAccepted] = useState(false);
+  const [strictEducationMatch, setStrictEducationMatch] = useState(true);
 
   // Core Skill Requirements State (3 Distinct Cards)
   const [techSkills, setTechSkills] = useState([{ name: '', proficiency: 'intermediate', priority: 'Mandatory', type_id: 1 }]);
@@ -109,6 +110,7 @@ export default function CreateJob() {
         min_relevant_experience: minRelevantExperience ? parseInt(minRelevantExperience) : null,
         education_level: educationLevel,
         equivalent_experience_accepted: equivalentExperienceAccepted,
+        strict_education_match: strictEducationMatch,
         requires_tech_assessment: requiresTechAssessment,
         responsibilities: responsibilities.filter(r => r.trim() !== ''),
         job_status: status
@@ -415,6 +417,24 @@ export default function CreateJob() {
                       <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-4"></div>
                     </div>
                     <span className="ml-3 text-sm font-medium text-slate-700">Equivalent experience accepted in lieu of degree</span>
+                  </label>
+                </div>
+                <div className="flex items-center">
+                  <label className="flex items-center cursor-pointer">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={strictEducationMatch}
+                        onChange={(e) => setStrictEducationMatch(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
+                      <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-4"></div>
+                    </div>
+                    <div className="ml-3">
+                      <span className="block text-sm font-medium text-slate-700">Degree field must strictly match job domain</span>
+                      <span className="block text-xs text-slate-400 mt-0.5">AI will aggressively penalize applicants with unrelated degree fields</span>
+                    </div>
                   </label>
                 </div>
               </div>
