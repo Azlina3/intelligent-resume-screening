@@ -4,6 +4,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import JobForm from './pages/JobForm';
 import CreateJob from './pages/CreateJob';
+import TrackStatus from './pages/TrackStatus';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/apply/:jobId" element={<JobForm />} />
         <Route path="/create-job" element={<CreateJob />} />
+        <Route path="/track-status" element={<TrackStatus />} />
       </Routes>
     </BrowserRouter>
   );
