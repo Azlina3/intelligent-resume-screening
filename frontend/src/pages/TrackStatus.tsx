@@ -22,19 +22,12 @@ export default function TrackStatus() {
 
     setIsLoading(true);
     try {
-      // Query application matching the reference, inner join candidate to ensure email matches
+      // Call a secure database function to bypass RLS and verify credentials
       const { data, error } = await supabase
-        .from('application')
-        .select(`
-          application_reference,
-          application_status,
-          applied_at,
-          candidate!inner ( name, email ),
-          job:job_id ( job_title )
-        `)
-        .eq('application_reference', reference)
-        .eq('candidate.email', email)
-        .maybeSingle();
+        .rpc('track_application_status', { 
+          p_email: email, 
+          p_reference: reference 
+        });
 
       if (error) {
         throw new Error(error.message);

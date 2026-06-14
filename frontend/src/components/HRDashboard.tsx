@@ -71,6 +71,7 @@ const ChevronRightIcon = () => (
 export default function HRDashboard({ userName }: { userName?: string }) {
   const navigate = useNavigate();
   const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'jobs' | 'candidates' | 'ranking' | 'emails'>('dashboard');
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -380,10 +381,10 @@ export default function HRDashboard({ userName }: { userName?: string }) {
         <ProfileSettings userName={userName} />
       ) : currentView === 'candidates' ? (
         <Candidates />
-      ) : currentView === 'candidate-details' ? (
-        <CandidateDetails onBack={() => setCurrentView('ranking')} />
+      ) : currentView === 'candidate-details' && selectedApplicationId ? (
+        <CandidateDetails applicationId={selectedApplicationId} onBack={() => setCurrentView('ranking')} />
       ) : currentView === 'ranking' ? (
-        <Ranking onViewDetails={() => setCurrentView('candidate-details')} />
+        <Ranking onViewDetails={(id) => { setSelectedApplicationId(id); setCurrentView('candidate-details'); }} />
       ) : (
         <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
           <div className="max-w-4xl mx-auto flex items-center justify-center h-full">

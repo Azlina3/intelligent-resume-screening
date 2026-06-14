@@ -41,13 +41,22 @@ class WorkExperience(BaseModel):
     duration_months: int = Field(description="Calculated duration of employment in months.")
     summary: str = Field(description="A concise summary of responsibilities and impact in this role.")
 
+class Education(BaseModel):
+    raw_title: str = Field(description="The exact title of the degree or qualification.")
+    normalized_category: str = Field(description="One of: 'No Requirement', 'SPM / O-Level', 'Diploma', 'Bachelor\\'s Degree', 'Master\\'s Degree', 'PhD'.")
+    semantic_relevance_score: float = Field(description="A score from 0.0 to 1.0 indicating how relevant this degree is to the tech industry/software development. 1.0 for Computer Science, 0.8 for IT, 0.5 for Engineering, 0.2 for Business, etc.")
+
+class CalculatedMetrics(BaseModel):
+    total_epe_months: int = Field(description="Equivalent Professional Experience in months. Formal jobs/internships = 1x duration. Major academic projects = 0.7x weight. Hackathons = 0.5x weight.")
+
+
 # Define the Structured Data Schema using Pydantic
 class ExtractedResume(BaseModel):
     full_name: Optional[str] = Field(None, description="The candidate's full name.")
     email: Optional[str] = Field(None, description="Contact email address.")
     phone: Optional[str] = Field(None, description="Primary telephone or contact number.")
-    highest_education: str = Field(description="Highest qualification achieved (e.g., Bachelor's Degree in Computer Science, Diploma).")
-    years_of_experience: int = Field(description="Calculated total years of relevant domain work experience across all roles.")
+    education: Education = Field(description="Details of the highest education achieved.")
+    calculated_metrics: CalculatedMetrics = Field(description="Calculated Equivalent Professional Experience (EPE).")
     portfolio_links: List[str] = Field(default=[], description="Array of raw URLs like GitHub or LinkedIn profiles.")
     skills: Skills = Field(description="Separated technical and soft skills.")
     work_experience: List[WorkExperience] = Field(description="Structured list of distinct past employment and roles.")
@@ -77,9 +86,11 @@ async def parse_resume(file: UploadFile = File(...)):
         Important Guidelines:
         1. Soft Skills: Extract a maximum of 3-5 behavioral soft skills (e.g., "Public Speaking," "Team Leadership") only if they are explicitly supported by facts in the resume text.
         2. Portfolio Links: Search the header block of the document for any string matching patterns like github.com/* or linkedin.com/in/*. Extract these raw URLs into a standalone string array called portfolio_links.
-        3. Work Experience: Loop through their timeline and output a list of structured objects (Company Name, Role Title, duration_months, summary). Ensure the total `years_of_experience` matches the sum of these durations.
+        3. Work Experience: Loop through their timeline and output a list of structured objects (Company Name, Role Title, duration_months, summary).
         4. Achievements: Extract qualitative achievements (like hackathons, awards, scholarships) into an array of strings.
         5. Languages: Extract known languages and proficiencies if listed.
+        6. Equivalent Professional Experience (EPE): Calculate `total_epe_months`. Formal jobs/internships = 1x duration. Major academic projects = 0.7x duration. Hackathons = 0.5x duration (e.g., 1 month * 0.5 = 0.5 months). Sum these up in months.
+        7. Education: Identify highest education. Provide `raw_title`. Map to `normalized_category` (must be exactly one of: 'No Requirement', 'SPM / O-Level', 'Diploma', 'Bachelor\\'s Degree', 'Master\\'s Degree', 'PhD'). Estimate `semantic_relevance_score` between 0.0 and 1.0 based on relevance to tech/software.
         """
         
         response = client.models.generate_content(
@@ -101,6 +112,33 @@ async def parse_resume(file: UploadFile = File(...)):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI parsing connection or generation failed: {str(e)}")
+
+class EmbedRequest(BaseModel):
+    skills: List[str]
+
+@app.post("/api/embed-skills")
+async def embed_skills(request: EmbedRequest):
+    """
+    Receives a list of skill strings and returns their 768-dimensional float arrays
+    using Google's text-embedding-004 model.
+    """
+    try:
+        client = genai.Client()
+        if not request.skills:
+            return {"embeddings": []}
+            
+        response = client.models.embed_content(
+            model='gemini-embedding-001',
+            contents=request.skills,
+            config=types.EmbedContentConfig(output_dimensionality=768)
+        )
+        # response.embeddings is a list of Embedding objects. We extract the values.
+        # Since we passed a list of strings, it should return a list of embeddings.
+        vector_arrays = [e.values for e in response.embeddings]
+        
+        return {"embeddings": vector_arrays}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate embeddings: {str(e)}")
 
 # Add a fast Uvicorn entry block
 if __name__ == "__main__":

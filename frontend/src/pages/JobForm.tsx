@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { evaluateCandidateMatch } from '../utils/MatchingEngine';
 
 export default function JobForm() {
   const navigate = useNavigate();
@@ -17,6 +18,9 @@ export default function JobForm() {
   const [softSkills, setSoftSkills] = useState<string[]>([]);
   const [newTechnicalSkill, setNewTechnicalSkill] = useState("");
   const [newSoftSkill, setNewSoftSkill] = useState("");
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   
   // Extracted Data State
   const [fullName, setFullName] = useState("");
@@ -25,10 +29,12 @@ export default function JobForm() {
   const [phone, setPhone] = useState("");
   const [highestEducation, setHighestEducation] = useState("");
   const [yearsOfExperience, setYearsOfExperience] = useState<number | "">("");
+  const [education, setEducation] = useState<any>(null);
+  const [calculatedMetrics, setCalculatedMetrics] = useState<any>(null);
   const [currentSalary, setCurrentSalary] = useState("");
   const [expectedSalary, setExpectedSalary] = useState("");
   const [availability, setAvailability] = useState("1 Month");
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [workExperiences, setWorkExperiences] = useState<any[]>([]);
   const [languages, setLanguages] = useState<any[]>([]);
@@ -36,12 +42,11 @@ export default function JobForm() {
   
   const [portfolios, setPortfolios] = useState(["", ""]);
 
-  const [otherDocs, setOtherDocs] = useState<string[]>([]);
+  const [otherDocs, setOtherDocs] = useState<File[]>([]);
   
   const handleOtherDocsUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newFiles = Array.from(e.target.files).map(file => file.name);
-      setOtherDocs([...otherDocs, ...newFiles]);
+      setOtherDocs([...otherDocs, ...Array.from(e.target.files)]);
     }
   };
   
@@ -114,8 +119,14 @@ export default function JobForm() {
         if (data.full_name) setFullName(data.full_name);
         if (data.email) setEmail(data.email);
         if (data.phone) setPhone(data.phone);
-        if (data.highest_education) setHighestEducation(data.highest_education);
-        if (data.years_of_experience) setYearsOfExperience(data.years_of_experience);
+        if (data.education) {
+          setHighestEducation(data.education.raw_title);
+          setEducation(data.education);
+        }
+        if (data.calculated_metrics) {
+          setCalculatedMetrics(data.calculated_metrics);
+          setYearsOfExperience(Math.round((data.calculated_metrics.total_epe_months / 12) * 10) / 10);
+        }
         if (data.skills?.technical) setTechnicalSkills(data.skills.technical);
         if (data.skills?.soft) setSoftSkills(data.skills.soft);
         if (data.work_experience) setWorkExperiences(data.work_experience);
@@ -137,6 +148,15 @@ export default function JobForm() {
     }
   };
 
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      setProfilePhoto(file);
+      const objectUrl = URL.createObjectURL(file);
+      setPhotoPreview(objectUrl);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resumeFile) {
@@ -148,7 +168,7 @@ export default function JobForm() {
     try {
       // 1. Check or Create Candidate
       let candidateId = "";
-      const { data: existingCandidate, error: checkError } = await supabase
+      const { data: existingCandidate } = await supabase
         .from('candidate')
         .select('candidate_id')
         .eq('email', email)
@@ -176,7 +196,10 @@ export default function JobForm() {
         .upload(fileName, resumeFile);
 
       if (uploadError) {
-        console.warn("Storage Upload Error:", uploadError.message);
+        console.error("Storage Upload Error:", uploadError.message);
+        alert(`Failed to upload resume to Storage. Please ensure you have created a public bucket named 'resumes' and enabled INSERT policies for public users. Error: ${uploadError.message}`);
+        setIsSubmitting(false);
+        return;
       } else {
         const { data: publicUrlData } = supabase.storage
           .from('resumes')
@@ -184,40 +207,142 @@ export default function JobForm() {
         resumeUrl = publicUrlData.publicUrl;
       }
 
+      // 2.5 Upload Profile Photo (if exists)
+      let photoUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=random`;
+      if (profilePhoto) {
+        const photoExt = profilePhoto.name.split('.').pop();
+        const photoName = `photo-${candidateId}-${Date.now()}.${photoExt}`;
+        const { error: photoUploadError } = await supabase.storage
+          .from('applicant-images')
+          .upload(photoName, profilePhoto);
+        
+        if (!photoUploadError) {
+          const { data: photoData } = supabase.storage
+            .from('applicant-images')
+            .getPublicUrl(photoName);
+          photoUrl = photoData.publicUrl;
+        }
+      }
+
+      // 2.7 Upload Other Related Docs
+      const otherDocUrls: string[] = [];
+      for (const doc of otherDocs) {
+        const docExt = doc.name.split('.').pop();
+        const docName = `doc-${candidateId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${docExt}`;
+        const { error: docUploadError } = await supabase.storage
+          .from('related_docs')
+          .upload(docName, doc);
+          
+        if (!docUploadError) {
+           const { data: docData } = supabase.storage.from('related_docs').getPublicUrl(docName);
+           otherDocUrls.push(docData.publicUrl);
+        }
+      }
+
       // 3. Create Application Record
       const appReference = `APP-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      const { data: application, error: appError } = await supabase
+      const applicationId = crypto.randomUUID();
+      
+      const { error: appError } = await supabase
         .from('application')
         .insert({
+          application_id: applicationId,
           candidate_id: candidateId,
           job_id: parseInt(jobId || "0"),
+          applicant_image: photoUrl,
           resume_file: resumeUrl,
           application_reference: appReference,
-          application_status: 'Pending Review',
-          current_salary: currentSalary ? parseFloat(currentSalary) : null,
-          expected_salary: expectedSalary ? parseFloat(expectedSalary) : null,
+          application_status: 'Received',
+          current_salary: currentSalary ? parseFloat(currentSalary) : 0,
+          expected_salary: expectedSalary ? parseFloat(expectedSalary) : 0,
           availability: availability,
           highest_education: highestEducation,
-          years_of_experience: yearsOfExperience || 0,
+          years_of_experience: Math.round(Number(yearsOfExperience) || 0),
           portfolio_link: JSON.stringify(portfolios.filter(p => p.trim() !== "")),
-          work_experiences: workExperiences,
-          languages: languages,
-          achievements: achievements
+          work_experience: workExperiences,
+          language: languages,
+          achievement: achievements,
+          other_docs: otherDocUrls
         })
-        .select()
-        .single();
 
       if (appError) throw new Error("Application Error: " + appError.message);
-      const applicationId = application.application_id;
+
+      // 3.5 Calculate and Insert Score
+      const allCandidateSkills = [...technicalSkills, ...softSkills];
+      const allCandidateLanguages = languages.map((l: any) => l.language || l.name);
+      const everythingToEmbed = [...allCandidateSkills, ...allCandidateLanguages, highestEducation].filter(Boolean);
+      
+      let candidateEmbeddings: number[][] = [];
+      if (everythingToEmbed.length > 0) {
+        const embedRes = await fetch("http://localhost:8000/api/embed-skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skills: everythingToEmbed })
+        });
+        if (!embedRes.ok) throw new Error("Failed to embed candidate skills.");
+        const embedData = await embedRes.json();
+        candidateEmbeddings = embedData.embeddings;
+      }
+      
+      const embeddedSkills = everythingToEmbed.map((name, i) => ({
+        name,
+        embedding: candidateEmbeddings[i]
+      }));
+
+      const candidateProfile = {
+        skills: { technical: technicalSkills, soft: softSkills },
+        languages: languages,
+        education: education,
+        calculated_metrics: calculatedMetrics,
+        years_of_experience: yearsOfExperience,
+        embedded_skills: embeddedSkills
+      };
+      
+      const jobConfig = {
+        minTotalExpYears: jobDetails?.min_total_experience || 0,
+        minRelevantExpYears: jobDetails?.min_relevant_experience || 0,
+        academicEquivalent: jobDetails?.equivalent_experience_accepted || false,
+        minEduLevel: jobDetails?.education_level || "bachelor",
+        strictEducationMatch: jobDetails?.strict_education_match || false
+      };
+
+      const { finalPercentage, breakdown } = evaluateCandidateMatch(
+        jobRequirements,
+        jobConfig,
+        candidateProfile
+      );
+
+      const scoreId = crypto.randomUUID();
+      const { error: scoreError } = await supabase
+        .from('score')
+        .insert([{
+          score_id: scoreId,
+          application_id: applicationId,
+          total_score: finalPercentage,
+          rank: 1
+        }]);
+        
+      if (!scoreError) {
+        await supabase
+          .from('score_breakdown')
+          .insert([
+            { score_id: scoreId, criteria: 'Mandatory Requirements', score_value: breakdown.mandatoryPoints },
+            { score_id: scoreId, criteria: 'Optional Requirements', score_value: breakdown.optionalPoints },
+            { score_id: scoreId, criteria: 'Experience Match', score_value: breakdown.experiencePoints },
+            { score_id: scoreId, criteria: 'Education Match', score_value: breakdown.educationPoints }
+          ]);
+      }
 
       // 4. Insert Candidate Data
       const candidateDataToInsert: any[] = [];
       
       technicalSkills.forEach(skill => {
-        candidateDataToInsert.push({ application_id: applicationId, type_id: 1, extracted_value: skill });
+        const embedObj = embeddedSkills.find(s => s.name === skill);
+        candidateDataToInsert.push({ application_id: applicationId, type_id: 1, extracted_value: skill, embedding: embedObj?.embedding });
       });
       softSkills.forEach(skill => {
-        candidateDataToInsert.push({ application_id: applicationId, type_id: 2, extracted_value: skill });
+        const embedObj = embeddedSkills.find(s => s.name === skill);
+        candidateDataToInsert.push({ application_id: applicationId, type_id: 2, extracted_value: skill, embedding: embedObj?.embedding });
       });
       // Note: Work Experiences, Languages, and Achievements are temporarily not inserted 
       // into candidate_data to avoid foreign key constraint errors since type_id 4, 5, 6 
@@ -225,7 +350,7 @@ export default function JobForm() {
 
       if (candidateDataToInsert.length > 0) {
         const { error: dataError } = await supabase
-          .from('candidate_data')
+          .from('extracted_data')
           .insert(candidateDataToInsert);
         if (dataError) console.warn("Candidate Data Error:", dataError.message);
       }
@@ -370,7 +495,7 @@ export default function JobForm() {
             </div>
           </div>
 
-          <form className="space-y-12">
+          <form className="space-y-12" onSubmit={handleSubmit}>
             
             {/* Document Upload */}
             <section>
@@ -414,11 +539,23 @@ export default function JobForm() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Upload Profile Photo (Optional)</label>
-                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:bg-slate-50 transition-colors cursor-pointer group">
+                  <div className="relative border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:bg-slate-50 transition-colors cursor-pointer group">
+                    <input 
+                      type="file" 
+                      accept="image/jpeg, image/png" 
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      onChange={handlePhotoUpload}
+                    />
                     <div className="flex flex-col items-center justify-center">
-                      <svg className="w-8 h-8 text-slate-400 mb-3 group-hover:text-[#1d4ed8] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
+                      {photoPreview ? (
+                        <div className="w-16 h-16 rounded-full overflow-hidden mb-3 border-2 border-[#1d4ed8]">
+                           <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <svg className="w-8 h-8 text-slate-400 mb-3 group-hover:text-[#1d4ed8] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      )}
                       <p className="text-sm font-medium text-slate-700">Click or drag to upload profile photo</p>
                       <p className="text-xs text-slate-400 mt-1">JPG or PNG format only</p>
                     </div>
@@ -472,15 +609,25 @@ export default function JobForm() {
                           onChange={(e) => setHighestEducation(e.target.value)} 
                           className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" 
                         />
+                        {education && (
+                          <div className="mt-2 text-xs text-slate-500 bg-white p-2 border border-slate-100 rounded">
+                            <span className="font-semibold">AI Normalized:</span> {education.normalized_category} (Relevance: {education.semantic_relevance_score})
+                          </div>
+                        )}
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Total Years of Experience</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Total Years of Experience (EPE)</label>
                         <input 
                           type="number" 
                           value={yearsOfExperience} 
                           onChange={(e) => setYearsOfExperience(e.target.value ? Number(e.target.value) : "")} 
                           className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" 
                         />
+                        {calculatedMetrics && (
+                          <div className="mt-2 text-xs text-slate-500 bg-white p-2 border border-slate-100 rounded">
+                            <span className="font-semibold">AI Calculated EPE:</span> {calculatedMetrics.total_epe_months} months
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -702,46 +849,39 @@ export default function JobForm() {
               
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Upload Cover Letter, Academic Transcript, etc.</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Other Related Files (Optional)</label>
                   <div className="relative border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:bg-slate-50 transition-colors cursor-pointer group">
                     <input 
                       type="file" 
                       multiple
-                      accept=".pdf,.doc,.docx" 
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                       onChange={handleOtherDocsUpload}
                     />
                     <div className="flex flex-col items-center justify-center">
                       <svg className="w-8 h-8 text-slate-400 mb-3 group-hover:text-[#1d4ed8] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <p className="text-sm font-medium text-slate-700">Click or drag to upload related documents</p>
-                      <p className="text-xs text-slate-400 mt-1">PDF, DOC, or DOCX format</p>
+                      <p className="text-sm font-medium text-slate-700">Click or drag to upload additional documents</p>
+                      <p className="text-xs text-slate-400 mt-1">e.g., Cover letters, certifications</p>
                     </div>
                   </div>
+                  {otherDocs.length > 0 && (
+                    <ul className="mt-4 space-y-2">
+                      {otherDocs.map((doc, index) => (
+                        <li key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                          <span className="text-sm text-slate-700 truncate">{doc.name}</span>
+                          <button 
+                            type="button" 
+                            onClick={() => removeOtherDoc(index)}
+                            className="text-slate-400 hover:text-red-500 transition-colors"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-
-                {otherDocs.length > 0 && (
-                  <div className="space-y-3">
-                    {otherDocs.map((doc, index) => (
-                      <div key={index} className="flex justify-between items-center p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                        <div className="flex items-center">
-                          <svg className="w-5 h-5 text-[#1d4ed8] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                          </svg>
-                          <span className="text-sm font-medium text-slate-800">{doc}</span>
-                        </div>
-                        <button 
-                          type="button" 
-                          onClick={() => removeOtherDoc(index)}
-                          className="text-slate-400 hover:text-red-500 transition-colors"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </section>
 

@@ -18,6 +18,7 @@ export default function CreateJob() {
   const [minTotalExperience, setMinTotalExperience] = useState('');
   const [minRelevantExperience, setMinRelevantExperience] = useState('');
   const [educationLevel, setEducationLevel] = useState('');
+  const [acceptableDegrees, setAcceptableDegrees] = useState('');
   const [equivalentExperienceAccepted, setEquivalentExperienceAccepted] = useState(false);
   const [strictEducationMatch, setStrictEducationMatch] = useState(true);
 
@@ -129,22 +130,53 @@ export default function CreateJob() {
       const newJobId = jobData.job_id;
 
       // 2. Prepare Skills Payload (Unified Array from all 3 cards)
-      const allSkills = [...techSkills, ...softSkills, ...domainSkills].filter(s => s.name.trim() !== '');
+      const allSkills = [
+        ...techSkills, 
+        ...softSkills, 
+        ...domainSkills
+      ].filter(s => s.name.trim() !== '');
 
-      if (allSkills.length > 0) {
-        const skillsPayload = allSkills.map(skill => ({
+      const acceptableDegreesArray = acceptableDegrees.split(',').map(d => d.trim()).filter(Boolean);
+      const itemsToEmbed = [...allSkills.map(s => s.name), ...acceptableDegreesArray];
+
+      if (itemsToEmbed.length > 0) {
+        // Fetch embeddings for all skills + degrees
+        const embedRes = await fetch("http://localhost:8000/api/embed-skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skills: itemsToEmbed })
+        });
+        
+        if (!embedRes.ok) {
+          throw new Error("Failed to generate vector embeddings for skills.");
+        }
+        
+        const embedData = await embedRes.json();
+        const embeddings = embedData.embeddings;
+
+        const skillsPayload = allSkills.map((skill, index) => ({
           job_id: newJobId,
           requirement_name: skill.name,
           proficiency_level: skill.proficiency,
           is_mandatory: skill.priority === 'Mandatory',
-          type_id: skill.type_id
+          type_id: skill.type_id,
+          embedding: embeddings[index]
         }));
 
-        console.log("Inserting Requirements:", skillsPayload);
+        const degreesPayload = acceptableDegreesArray.map((degree, index) => ({
+          job_id: newJobId,
+          requirement_name: degree,
+          proficiency_level: 'intermediate',
+          is_mandatory: true,
+          type_id: 4,
+          embedding: embeddings[allSkills.length + index]
+        }));
+
+        console.log("Inserting Requirements:", [...skillsPayload, ...degreesPayload]);
 
         const { error: skillsError } = await supabase
           .from('job_requirement')
-          .insert(skillsPayload);
+          .insert([...skillsPayload, ...degreesPayload]);
 
         if (skillsError) throw skillsError;
       }
@@ -436,6 +468,17 @@ export default function CreateJob() {
                       <span className="block text-xs text-slate-400 mt-0.5">AI will aggressively penalize applicants with unrelated degree fields</span>
                     </div>
                   </label>
+                </div>
+                
+                <div className="md:col-span-2 mt-4">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Acceptable Fields of Study</label>
+                  <input
+                    type="text"
+                    value={acceptableDegrees}
+                    onChange={(e) => setAcceptableDegrees(e.target.value)}
+                    placeholder="e.g., Computer Science, Business, Economics (comma separated)"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
+                  />
                 </div>
               </div>
             </section>
