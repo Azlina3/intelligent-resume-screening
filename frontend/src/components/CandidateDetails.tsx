@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../supabaseClient';
+import { isSkillMatch } from '../utils/MatchingEngine';
 
 // --- Icons ---
 const ArrowLeftIcon = () => (
@@ -29,7 +31,127 @@ const DocumentIcon = () => (
   <svg className="w-5 h-5 text-slate-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
 );
 
-export default function CandidateDetails({ onBack }: { onBack: () => void }) {
+export default function CandidateDetails({ applicationId, onBack }: { applicationId: string, onBack: () => void }) {
+  const [data, setData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchData();
+  }, [applicationId]);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const { data: appData, error: appError } = await supabase
+        .from('application')
+        .select(`
+          *,
+          candidate (*),
+          job (*),
+          score (
+            total_score,
+            score_breakdown (*)
+          )
+        `)
+        .eq('application_id', applicationId)
+        .single();
+        
+      if (appError) throw appError;
+
+      const { data: reqData, error: reqError } = await supabase
+        .from('job_requirement')
+        .select('*')
+        .eq('job_id', appData.job_id);
+
+      if (reqError) throw reqError;
+
+      // Fetch extracted data separately
+      const { data: extData, error: extError } = await supabase
+        .from('extracted_data')
+        .select('*')
+        .eq('application_id', applicationId);
+        
+      if (extError) throw extError;
+
+      // Include languages from appData
+      const candidateLanguages = appData.language?.map((l: any) => l.language?.toLowerCase() || l.name?.toLowerCase()) || [];
+      const extractedSkills = [
+        ...(extData?.map((d: any) => d.extracted_value.toLowerCase()) || []),
+        ...candidateLanguages
+      ].filter(Boolean);
+
+      const candidateEmbeddings = [
+        ...(extData?.map((d: any) => ({ name: d.extracted_value, embedding: d.embedding })) || []),
+        ...candidateLanguages.map((l: string) => ({ name: l, embedding: null }))
+      ].filter(Boolean);
+
+      const matchedSkills = reqData?.filter((req: any) => 
+        isSkillMatch(req.requirement_name, extractedSkills, req.embedding, candidateEmbeddings)
+      ).map((r: any) => r.requirement_name) || [];
+      
+      const missingSkills = reqData?.filter((req: any) => 
+        !isSkillMatch(req.requirement_name, extractedSkills, req.embedding, candidateEmbeddings)
+      ).map((r: any) => r.requirement_name) || [];
+      
+      const additionalSkills = extractedSkills
+        .filter((skill: string) => {
+          const candEmbed = candidateEmbeddings.find(c => c.name.toLowerCase() === skill.toLowerCase())?.embedding;
+          return !reqData?.some((req: any) => isSkillMatch(req.requirement_name, [skill], req.embedding, [{ name: skill, embedding: candEmbed }]));
+        });
+
+      const scoreData = Array.isArray(appData.score) ? appData.score[0] : appData.score;
+      const breakdowns = scoreData?.score_breakdown || [];
+      const mandatory = breakdowns.find((b: any) => b.criteria === 'Mandatory Requirements')?.score_value || 0;
+      const optional = breakdowns.find((b: any) => b.criteria === 'Optional Requirements')?.score_value || 0;
+      const skillsMatch = Math.round(Number(mandatory) + Number(optional));
+      const educationMatch = Math.round(Number(breakdowns.find((b: any) => b.criteria === 'Education Match')?.score_value || 0));
+      const experienceMatch = Math.round(Number(breakdowns.find((b: any) => b.criteria === 'Experience Match')?.score_value || 0));
+
+      setData({
+        ...appData,
+        scoreData,
+        skillsMatch,
+        educationMatch,
+        experienceMatch,
+        matchedSkills,
+        missingSkills,
+        additionalSkills,
+        requiredCount: reqData?.length || 0
+      });
+      
+    } catch (err: any) {
+      console.error('Error fetching details:', err);
+      setErrorMsg(err.message || 'Failed to load details');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
+        <div className="flex items-center justify-center h-full">
+          <svg className="w-8 h-8 animate-spin text-[#1d4ed8]" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+        </div>
+      </main>
+    );
+  }
+
+  if (errorMsg || !data) {
+    return (
+      <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
+        <div className="flex flex-col items-center justify-center h-full">
+          <p className="text-slate-500 mb-4">{errorMsg || 'Failed to load candidate details.'}</p>
+          <button onClick={onBack} className="px-4 py-2 bg-[#1e293b] text-white rounded-lg">Go Back</button>
+        </div>
+      </main>
+    );
+  }
+
+  const candidate = data.candidate || {};
+  const job = data.job || {};
+
   return (
     <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
       <div className="max-w-7xl mx-auto xl:mx-0 w-full">
@@ -44,11 +166,15 @@ export default function CandidateDetails({ onBack }: { onBack: () => void }) {
 
         <div className="flex justify-between items-start mb-10">
           <div className="text-left">
-            <h1 className="text-[34px] font-serif font-bold text-[#0f172a] mb-1 tracking-tight">Sarah Johnson</h1>
-            <p className="text-slate-500 text-lg">Senior Frontend Developer</p>
+            <h1 className="text-[34px] font-serif font-bold text-[#0f172a] mb-1 tracking-tight">{candidate.name || 'Unknown'}</h1>
+            <p className="text-slate-500 text-lg">{job.job_title || 'Unknown Position'}</p>
           </div>
           <div className="text-right">
-            <div className="text-4xl font-serif font-bold text-[#16a34a] leading-none mb-1">92%</div>
+            <div className={`text-4xl font-serif font-bold leading-none mb-1 ${
+              (data.scoreData?.total_score || 0) >= 90 ? 'text-[#16a34a]' : 'text-[#3b82f6]'
+            }`}>
+              {Math.round(data.scoreData?.total_score || 0)}%
+            </div>
             <div className="text-slate-500 text-sm font-medium">Match Score</div>
           </div>
         </div>
@@ -68,36 +194,40 @@ export default function CandidateDetails({ onBack }: { onBack: () => void }) {
                 <div>
                   <div className="flex justify-between items-end mb-2">
                     <span className="font-semibold text-[#0f172a]">Skills Match</span>
-                    <span className="text-xl font-serif font-bold text-[#0f172a]">95%</span>
+                    <span className="text-xl font-serif font-bold text-[#0f172a]">{data.skillsMatch}%</span>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-3 mb-2">
-                    <div className="bg-[#1e293b] h-3 rounded-full" style={{ width: '95%' }}></div>
+                    <div className="bg-[#1e293b] h-3 rounded-full" style={{ width: `${data.skillsMatch}%` }}></div>
                   </div>
-                  <p className="text-sm text-slate-400">3/4 required skills matched</p>
+                  <p className="text-sm text-slate-400">
+                    {data.matchedSkills.length}/{data.requiredCount} required skills matched
+                  </p>
                 </div>
 
                 {/* Education */}
                 <div>
                   <div className="flex justify-between items-end mb-2">
                     <span className="font-semibold text-[#0f172a]">Education Match</span>
-                    <span className="text-xl font-serif font-bold text-[#0f172a]">90%</span>
+                    <span className="text-xl font-serif font-bold text-[#0f172a]">{data.educationMatch}%</span>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-3 mb-2">
-                    <div className="bg-[#1e293b] h-3 rounded-full" style={{ width: '90%' }}></div>
+                    <div className="bg-[#1e293b] h-3 rounded-full" style={{ width: `${data.educationMatch}%` }}></div>
                   </div>
-                  <p className="text-sm text-slate-400">Bachelor's degree in relevant field</p>
+                  <p className="text-sm text-slate-400">Calculated based on {data.highest_education || 'Unknown'}</p>
                 </div>
 
                 {/* Experience */}
                 <div>
                   <div className="flex justify-between items-end mb-2">
                     <span className="font-semibold text-[#0f172a]">Experience Match</span>
-                    <span className="text-xl font-serif font-bold text-[#0f172a]">90%</span>
+                    <span className="text-xl font-serif font-bold text-[#0f172a]">{data.experienceMatch}%</span>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-3 mb-2">
-                    <div className="bg-[#1e293b] h-3 rounded-full" style={{ width: '90%' }}></div>
+                    <div className="bg-[#1e293b] h-3 rounded-full" style={{ width: `${data.experienceMatch}%` }}></div>
                   </div>
-                  <p className="text-sm text-slate-400">7 years exceeds 5+ years requirement</p>
+                  <p className="text-sm text-slate-400">
+                    {data.years_of_experience || 0} years calculated vs {job.min_total_experience || 0}+ years required
+                  </p>
                 </div>
               </div>
             </div>
@@ -112,9 +242,15 @@ export default function CandidateDetails({ onBack }: { onBack: () => void }) {
                     <CheckCircleIcon /> Matched Skills
                   </div>
                   <div className="flex gap-2 flex-wrap ml-7">
-                    <span className="px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full">React</span>
-                    <span className="px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full">TypeScript</span>
-                    <span className="px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full">Node.js</span>
+                    {data.matchedSkills.length > 0 ? (
+                      data.matchedSkills.map((s: string, i: number) => (
+                        <span key={i} className="px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full">
+                          {s}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-slate-400">None extracted</span>
+                    )}
                   </div>
                 </div>
 
@@ -123,7 +259,15 @@ export default function CandidateDetails({ onBack }: { onBack: () => void }) {
                     <XCircleIcon /> Missing Skills
                   </div>
                   <div className="flex gap-2 flex-wrap ml-7">
-                    <span className="px-3 py-1 bg-red-50 text-red-600 text-sm font-medium rounded-full border border-red-100">CSS</span>
+                    {data.missingSkills.length > 0 ? (
+                      data.missingSkills.map((s: string, i: number) => (
+                        <span key={i} className="px-3 py-1 bg-red-50 text-red-600 text-sm font-medium rounded-full border border-red-100">
+                          {s}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-slate-400">None missing</span>
+                    )}
                   </div>
                 </div>
 
@@ -132,9 +276,15 @@ export default function CandidateDetails({ onBack }: { onBack: () => void }) {
                     <RibbonIcon /> Additional Skills
                   </div>
                   <div className="flex gap-2 flex-wrap ml-7">
-                    <span className="px-3 py-1 bg-slate-50 text-slate-600 text-sm font-medium rounded-full border border-slate-200">GraphQL</span>
-                    <span className="px-3 py-1 bg-slate-50 text-slate-600 text-sm font-medium rounded-full border border-slate-200">AWS</span>
-                    <span className="px-3 py-1 bg-slate-50 text-slate-600 text-sm font-medium rounded-full border border-slate-200">Docker</span>
+                    {data.additionalSkills.length > 0 ? (
+                      data.additionalSkills.map((s: string, i: number) => (
+                        <span key={i} className="px-3 py-1 bg-slate-50 text-slate-600 text-sm font-medium rounded-full border border-slate-200">
+                          {s}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-slate-400">None extracted</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -145,6 +295,24 @@ export default function CandidateDetails({ onBack }: { onBack: () => void }) {
           {/* Sidebar Column (Right) */}
           <div className="space-y-6">
             
+            {/* Candidate Photo Placeholder */}
+            <div className="bg-white rounded-xl border border-slate-200 p-2 shadow-sm">
+              <div className="w-full aspect-square bg-gradient-to-br from-slate-50 to-slate-200 rounded-lg flex flex-col items-center justify-center border border-slate-100 shadow-inner overflow-hidden">
+                {data.applicant_image ? (
+                  <img src={data.applicant_image} alt={`${candidate.name} Photo`} className="w-full h-full object-cover" />
+                ) : (
+                  <>
+                    <svg className="w-32 h-32 text-slate-300 mb-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                    </svg>
+                    <div className="text-slate-400 font-medium text-sm tracking-widest uppercase">
+                      Photo Unavailable
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Contact Info Card */}
             <div className="bg-white rounded-xl border border-slate-200 p-7 shadow-sm text-left">
               <h3 className="text-lg font-serif font-bold text-[#0f172a] mb-6">Contact Information</h3>
@@ -153,14 +321,14 @@ export default function CandidateDetails({ onBack }: { onBack: () => void }) {
                   <MailIcon />
                   <div className="ml-4">
                     <div className="text-xs text-slate-400 font-medium mb-0.5">Email</div>
-                    <div className="text-sm font-medium text-slate-800">sarah.j@email.com</div>
+                    <div className="text-sm font-medium text-slate-800">{candidate.email || 'N/A'}</div>
                   </div>
                 </div>
                 <div className="flex items-start">
                   <PhoneIcon />
                   <div className="ml-4">
                     <div className="text-xs text-slate-400 font-medium mb-0.5">Phone</div>
-                    <div className="text-sm font-medium text-slate-800">+1 (555) 123-4567</div>
+                    <div className="text-sm font-medium text-slate-800">{candidate.phone || 'N/A'}</div>
                   </div>
                 </div>
               </div>
@@ -174,21 +342,27 @@ export default function CandidateDetails({ onBack }: { onBack: () => void }) {
                   <EducationIcon />
                   <div className="ml-4">
                     <div className="text-xs text-slate-400 font-medium mb-0.5">Education</div>
-                    <div className="text-sm font-medium text-slate-800 leading-tight">BS Computer Science, Stanford University</div>
+                    <div className="text-sm font-medium text-slate-800 leading-tight">
+                      {data.highest_education || 'Not specified'}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-start">
                   <ExperienceIcon />
                   <div className="ml-4">
                     <div className="text-xs text-slate-400 font-medium mb-0.5">Experience</div>
-                    <div className="text-sm font-medium text-slate-800">7 years</div>
+                    <div className="text-sm font-medium text-slate-800">
+                      {data.years_of_experience ? `${data.years_of_experience} years` : 'Not specified'}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-start">
                   <DocumentIcon />
                   <div className="ml-4">
                     <div className="text-xs text-slate-400 font-medium mb-0.5">Applied</div>
-                    <div className="text-sm font-medium text-slate-800">April 20, 2026</div>
+                    <div className="text-sm font-medium text-slate-800">
+                      {data.applied_at ? new Date(data.applied_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Unknown'}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -198,12 +372,20 @@ export default function CandidateDetails({ onBack }: { onBack: () => void }) {
             <div className="bg-white rounded-xl border border-slate-200 p-7 shadow-sm text-left">
               <h3 className="text-lg font-serif font-bold text-[#0f172a] mb-6">Actions</h3>
               <div className="space-y-3">
-                <button className="w-full bg-[#0f172a] hover:bg-slate-800 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
+                <a 
+                  href={`mailto:${candidate.email || ''}`}
+                  className="w-full bg-[#0f172a] hover:bg-slate-800 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"
+                >
                   Send Email
-                </button>
-                <button className="w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 rounded-lg text-sm font-medium transition-colors">
+                </a>
+                <a 
+                  href={data.resume_file || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"
+                >
                   Download Resume
-                </button>
+                </a>
               </div>
             </div>
 
@@ -214,3 +396,4 @@ export default function CandidateDetails({ onBack }: { onBack: () => void }) {
     </main>
   );
 }
+
