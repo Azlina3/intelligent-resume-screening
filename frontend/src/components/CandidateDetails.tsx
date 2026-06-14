@@ -31,7 +31,15 @@ const DocumentIcon = () => (
   <svg className="w-5 h-5 text-slate-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
 );
 
-export default function CandidateDetails({ applicationId, onBack }: { applicationId: string, onBack: () => void }) {
+export default function CandidateDetails({ 
+  applicationId, 
+  onBack,
+  onSendEmail
+}: { 
+  applicationId: string;
+  onBack: () => void;
+  onSendEmail?: (candidate: any) => void;
+}) {
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -74,39 +82,53 @@ export default function CandidateDetails({ applicationId, onBack }: { applicatio
         
       if (extError) throw extError;
 
-      // Include languages from appData
-      const candidateLanguages = appData.language?.map((l: any) => l.language?.toLowerCase() || l.name?.toLowerCase()) || [];
+      // We process languages separately for the UI, they shouldn't appear as additional skills
       const extractedSkills = [
-        ...(extData?.map((d: any) => d.extracted_value.toLowerCase()) || []),
-        ...candidateLanguages
+        ...(extData?.map((d: any) => d.extracted_value.toLowerCase()) || [])
       ].filter(Boolean);
 
       const candidateEmbeddings = [
-        ...(extData?.map((d: any) => ({ name: d.extracted_value, embedding: d.embedding })) || []),
-        ...candidateLanguages.map((l: string) => ({ name: l, embedding: null }))
+        ...(extData?.map((d: any) => ({ name: d.extracted_value, embedding: d.embedding })) || [])
       ].filter(Boolean);
 
-      const matchedSkills = reqData?.filter((req: any) => 
-        isSkillMatch(req.requirement_name, extractedSkills, req.embedding, candidateEmbeddings)
-      ).map((r: any) => r.requirement_name) || [];
+      // Filter out Education Requirements (type_id = 4) from Skills Match
+      const skillsReqData = reqData?.filter((req: any) => req.type_id !== 4) || [];
+
+      // Include language proficiency context so the matcher can detect communication skills
+      const candidateLanguagesFull = appData.language?.map((l: any) => `${l.language} ${l.proficiency}`.toLowerCase()) || [];
+      const skillsToMatchAgainst = [...extractedSkills, ...candidateLanguagesFull];
+
+      const matchedSkills = skillsReqData.filter((req: any) => 
+        isSkillMatch(req.requirement_name, skillsToMatchAgainst, req.embedding, candidateEmbeddings)
+      ).map((r: any) => r.requirement_name);
       
-      const missingSkills = reqData?.filter((req: any) => 
-        !isSkillMatch(req.requirement_name, extractedSkills, req.embedding, candidateEmbeddings)
-      ).map((r: any) => r.requirement_name) || [];
+      const missingSkills = skillsReqData.filter((req: any) => 
+        !isSkillMatch(req.requirement_name, skillsToMatchAgainst, req.embedding, candidateEmbeddings)
+      ).map((r: any) => r.requirement_name);
       
       const additionalSkills = extractedSkills
         .filter((skill: string) => {
           const candEmbed = candidateEmbeddings.find(c => c.name.toLowerCase() === skill.toLowerCase())?.embedding;
-          return !reqData?.some((req: any) => isSkillMatch(req.requirement_name, [skill], req.embedding, [{ name: skill, embedding: candEmbed }]));
+          return !skillsReqData.some((req: any) => isSkillMatch(req.requirement_name, [skill], req.embedding, [{ name: skill, embedding: candEmbed }]));
         });
 
       const scoreData = Array.isArray(appData.score) ? appData.score[0] : appData.score;
       const breakdowns = scoreData?.score_breakdown || [];
       const mandatory = breakdowns.find((b: any) => b.criteria === 'Mandatory Requirements')?.score_value || 0;
       const optional = breakdowns.find((b: any) => b.criteria === 'Optional Requirements')?.score_value || 0;
-      const skillsMatch = Math.round(Number(mandatory) + Number(optional));
-      const educationMatch = Math.round(Number(breakdowns.find((b: any) => b.criteria === 'Education Match')?.score_value || 0));
-      const experienceMatch = Math.round(Number(breakdowns.find((b: any) => b.criteria === 'Experience Match')?.score_value || 0));
+      const skillsMatchPoints = Number(mandatory) + Number(optional);
+      
+      let maxSkillsPoints = 0;
+      skillsReqData.forEach((req: any) => {
+        maxSkillsPoints += req.is_mandatory ? 10 : 3;
+      });
+      const skillsMatch = maxSkillsPoints > 0 ? Math.round((skillsMatchPoints / maxSkillsPoints) * 100) : 0;
+
+      const rawEdu = Number(breakdowns.find((b: any) => b.criteria === 'Education Match')?.score_value || 0);
+      const educationMatch = Math.round((rawEdu / 10) * 100);
+
+      const rawExp = Number(breakdowns.find((b: any) => b.criteria === 'Experience Match')?.score_value || 0);
+      const experienceMatch = Math.round((rawExp / 10) * 100);
 
       setData({
         ...appData,
@@ -368,16 +390,62 @@ export default function CandidateDetails({ applicationId, onBack }: { applicatio
               </div>
             </div>
 
+            {/* Languages Card */}
+            {data.language && data.language.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 p-7 shadow-sm text-left">
+                <h3 className="text-lg font-serif font-bold text-[#0f172a] mb-6">Languages</h3>
+                <div className="space-y-4">
+                  {data.language.map((lang: any, index: number) => (
+                    <div key={index} className="flex justify-between items-center p-3 border border-slate-100 rounded-lg bg-slate-50/50">
+                      <span className="font-medium text-slate-800 text-sm capitalize">{lang.language || lang.name}</span>
+                      <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
+                        {lang.proficiency || 'Not specified'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Actions Card */}
             <div className="bg-white rounded-xl border border-slate-200 p-7 shadow-sm text-left">
               <h3 className="text-lg font-serif font-bold text-[#0f172a] mb-6">Actions</h3>
               <div className="space-y-3">
-                <a 
-                  href={`mailto:${candidate.email || ''}`}
+                <button 
+                  className={`w-full ${data.application_status === 'Shortlisted' ? 'bg-green-600 hover:bg-green-700 border-green-600' : 'bg-[#1d4ed8] hover:bg-[#1e40af] border-[#1d4ed8]'} text-white border py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center`}
+                  onClick={async () => {
+                    if (data.application_status === 'Shortlisted') return;
+                    try {
+                      const { error } = await supabase
+                        .from('application')
+                        .update({ application_status: 'Shortlisted' })
+                        .eq('application_id', data.application_id);
+                      if (error) throw error;
+                      alert("Candidate successfully shortlisted!");
+                      window.location.reload(); // Refresh to show new status
+                    } catch (err: any) {
+                      alert("Failed to shortlist candidate: " + err.message);
+                    }
+                  }}
+                >
+                  {data.application_status === 'Shortlisted' ? 'Shortlisted ✓' : 'Shortlist Candidate'}
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (onSendEmail) {
+                      onSendEmail({
+                        id: data.application_id,
+                        name: candidate.name,
+                        email: candidate.email,
+                        jobTitle: job.job_title
+                      });
+                    }
+                  }}
                   className="w-full bg-[#0f172a] hover:bg-slate-800 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"
                 >
                   Send Email
-                </a>
+                </button>
                 <a 
                   href={data.resume_file || '#'}
                   target="_blank"
@@ -386,6 +454,16 @@ export default function CandidateDetails({ applicationId, onBack }: { applicatio
                 >
                   Download Resume
                 </a>
+                {data.other_docs && (
+                  <a 
+                    href={data.other_docs}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"
+                  >
+                    Download Other Docs
+                  </a>
+                )}
               </div>
             </div>
 

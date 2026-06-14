@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../config/supabaseClient';
 import ProfileSettings from './ProfileSettings';
@@ -6,6 +6,7 @@ import Jobs from './Jobs';
 import Candidates from './Candidates';
 import Ranking from './Ranking';
 import CandidateDetails from './CandidateDetails';
+import EmailTemplates from '../pages/EmailTemplates';
 
 // Icon components
 const BriefcaseIcon = () => (
@@ -70,8 +71,11 @@ const ChevronRightIcon = () => (
 
 export default function HRDashboard({ userName }: { userName?: string }) {
   const navigate = useNavigate();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'jobs' | 'candidates' | 'ranking' | 'emails'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'jobs' | 'candidates' | 'ranking' | 'emails' | 'candidate-details'>('dashboard');
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
+  const [selectedJobForRanking, setSelectedJobForRanking] = useState<string>('All Positions');
+  const [highlightedCandidateId, setHighlightedCandidateId] = useState<string | null>(null);
+  const [selectedCandidateForEmail, setSelectedCandidateForEmail] = useState<any>(null);
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -104,8 +108,8 @@ export default function HRDashboard({ userName }: { userName?: string }) {
             </li>
             {[
               { name: 'Jobs', icon: <MenuBriefcaseIcon /> },
-              { name: 'Candidates', icon: <UsersIcon /> },
               { name: 'Ranking', icon: <ChartBarIcon /> },
+              { name: 'Candidates', icon: <UsersIcon /> },
               { name: 'Emails', icon: <MailIcon /> }
             ].map((item) => {
               const viewName = item.name.toLowerCase() as typeof currentView;
@@ -113,7 +117,13 @@ export default function HRDashboard({ userName }: { userName?: string }) {
               <li key={item.name}>
                 <a 
                   href="#" 
-                  onClick={(e) => { e.preventDefault(); setCurrentView(viewName); }}
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    setCurrentView(viewName); 
+                    if (viewName !== 'ranking') {
+                      setSelectedJobForRanking('All Positions');
+                    }
+                  }}
                   className={`flex items-center px-8 py-2.5 transition-colors ${currentView === viewName ? 'text-white font-medium bg-white/5' : 'text-slate-300 hover:text-white'}`}
                 >
                   <span className="mr-3 opacity-60">
@@ -376,15 +386,37 @@ export default function HRDashboard({ userName }: { userName?: string }) {
         </div>
       </main>
       ) : currentView === 'jobs' ? (
-        <Jobs />
+        <Jobs onViewRanking={(jobTitle) => { 
+          setSelectedJobForRanking(jobTitle || 'All Positions'); 
+          setCurrentView('ranking'); 
+        }} />
+      ) : currentView === 'ranking' ? (
+        <Ranking 
+          onViewDetails={(id) => { setSelectedApplicationId(id); setCurrentView('candidate-details'); }} 
+          initialJobFilter={selectedJobForRanking}
+          highlightedCandidateId={highlightedCandidateId}
+        />
+      ) : currentView === 'candidates' ? (
+        <Candidates 
+          onViewInRanking={(id, jobTitle) => {
+            setHighlightedCandidateId(id);
+            setSelectedJobForRanking(jobTitle);
+            setCurrentView('ranking');
+          }}
+        />
+      ) : currentView === 'emails' ? (
+        <EmailTemplates candidateData={selectedCandidateForEmail} />
       ) : currentView === 'settings' ? (
         <ProfileSettings userName={userName} />
-      ) : currentView === 'candidates' ? (
-        <Candidates />
       ) : currentView === 'candidate-details' && selectedApplicationId ? (
-        <CandidateDetails applicationId={selectedApplicationId} onBack={() => setCurrentView('ranking')} />
-      ) : currentView === 'ranking' ? (
-        <Ranking onViewDetails={(id) => { setSelectedApplicationId(id); setCurrentView('candidate-details'); }} />
+        <CandidateDetails 
+          applicationId={selectedApplicationId} 
+          onBack={() => setCurrentView('ranking')} 
+          onSendEmail={(candidate) => {
+            setSelectedCandidateForEmail(candidate);
+            setCurrentView('emails');
+          }}
+        />
       ) : (
         <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
           <div className="max-w-4xl mx-auto flex items-center justify-center h-full">

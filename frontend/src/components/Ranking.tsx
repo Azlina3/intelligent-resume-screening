@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 
 interface RankingData {
@@ -25,13 +25,28 @@ const EyeIcon = () => (
   </svg>
 );
 
-export default function Ranking({ onViewDetails }: { onViewDetails: (id: string) => void }) {
+export default function Ranking({ 
+  onViewDetails, 
+  initialJobFilter = 'All Positions',
+  highlightedCandidateId
+}: { 
+  onViewDetails: (id: string) => void, 
+  initialJobFilter?: string,
+  highlightedCandidateId?: string | null
+}) {
   const [rankings, setRankings] = useState<RankingData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const highlightedRef = useRef<HTMLDivElement | null>(null);
   
-  // Filtering & Sorting states
   const [sortBy, setSortBy] = useState('Overall Score');
-  const [jobFilter, setJobFilter] = useState('All Positions');
+  const [jobFilter, setJobFilter] = useState(initialJobFilter);
+  const [activeTab, setActiveTab] = useState<'All' | 'Shortlisted'>('All');
+
+  useEffect(() => {
+    setJobFilter(initialJobFilter);
+  }, [initialJobFilter]);
+
+
 
   useEffect(() => {
     fetchRankings();
@@ -60,13 +75,24 @@ export default function Ranking({ onViewDetails }: { onViewDetails: (id: string)
         const formattedData: RankingData[] = data.map((item: any, index: number) => {
           const breakdowns = item.score_breakdown || [];
           
-          // Calculate skills match (sum of Mandatory and Optional)
-          const mandatory = breakdowns.find((b: any) => b.criteria === 'Mandatory Requirements')?.score_value || 0;
-          const optional = breakdowns.find((b: any) => b.criteria === 'Optional Requirements')?.score_value || 0;
-          const skillsMatch = Math.round(Number(mandatory) + Number(optional));
+          const mandatory = Number(breakdowns.find((b: any) => b.criteria === 'Mandatory Requirements')?.score_value || 0);
+          const optional = Number(breakdowns.find((b: any) => b.criteria === 'Optional Requirements')?.score_value || 0);
+          const rawEdu = Number(breakdowns.find((b: any) => b.criteria === 'Education Match')?.score_value || 0);
+          const rawExp = Number(breakdowns.find((b: any) => b.criteria === 'Experience Match')?.score_value || 0);
           
-          const educationMatch = Math.round(Number(breakdowns.find((b: any) => b.criteria === 'Education Match')?.score_value || 0));
-          const experienceMatch = Math.round(Number(breakdowns.find((b: any) => b.criteria === 'Experience Match')?.score_value || 0));
+          const totalScore = item.total_score || 0;
+          const candidatePointsEarned = mandatory + optional + rawEdu + rawExp;
+          
+          let maxPossiblePoints = 100;
+          if (totalScore > 0 && candidatePointsEarned > 0) {
+             maxPossiblePoints = (candidatePointsEarned / totalScore) * 100;
+          }
+          
+          const maxSkillsPoints = Math.max(1, maxPossiblePoints - 20); // edu 10 + exp 10
+          
+          const skillsMatch = Math.min(100, Math.round(((mandatory + optional) / maxSkillsPoints) * 100));
+          const educationMatch = Math.min(100, Math.round((rawEdu / 10) * 100));
+          const experienceMatch = Math.min(100, Math.round((rawExp / 10) * 100));
 
           return {
             id: item.application?.application_id || item.score_id,
@@ -95,8 +121,14 @@ export default function Ranking({ onViewDetails }: { onViewDetails: (id: string)
   }, [rankings]);
 
   const sortedAndFilteredRankings = useMemo(() => {
-    // First filter
     let filtered = rankings;
+    
+    // Status Filter (Mock logic for now since we don't have DB status yet)
+    if (activeTab === 'Shortlisted') {
+      filtered = filtered.filter(r => (r as any).isShortlisted); // Assuming isShortlisted will be added later
+    }
+
+    // Job filter
     if (jobFilter !== 'All Positions') {
       filtered = filtered.filter(r => r.job === jobFilter);
     }
@@ -108,17 +140,45 @@ export default function Ranking({ onViewDetails }: { onViewDetails: (id: string)
       if (sortBy === 'Experience Match') return b.experienceMatch - a.experienceMatch;
       return b.overallScore - a.overallScore; // default
     }).map((item, index) => ({ ...item, rank: index + 1 })); // recalculate rank after filtering/sorting
-  }, [rankings, jobFilter, sortBy]);
+  }, [rankings, jobFilter, sortBy, activeTab]);
+
+  useEffect(() => {
+    if (highlightedCandidateId && highlightedRef.current && !isLoading) {
+      setTimeout(() => {
+        highlightedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }, [sortedAndFilteredRankings, highlightedCandidateId, isLoading]);
 
   return (
     <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
       <div className="max-w-6xl mx-auto xl:mx-0">
         
-        {/* Header */}
-        <header className="mb-10 text-left">
+        <header className="mb-8 text-left">
           <h1 className="text-[34px] font-serif font-bold text-[#0f172a] mb-2 tracking-tight">Candidate Ranking</h1>
           <p className="text-slate-500 text-[15px]">AI-powered candidate scoring and ranking</p>
         </header>
+
+        {/* Tabs */}
+        <div className="flex border-b border-slate-200 mb-8 text-sm">
+          <button 
+            onClick={() => setActiveTab('All')}
+            className={`px-6 py-3 font-medium transition-colors border-b-2 ${
+              activeTab === 'All' ? 'border-[#1d4ed8] text-[#1d4ed8]' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+            }`}
+          >
+            All Candidates
+          </button>
+          <button 
+            onClick={() => setActiveTab('Shortlisted')}
+            className={`px-6 py-3 font-medium transition-colors border-b-2 flex items-center gap-2 ${
+              activeTab === 'Shortlisted' ? 'border-[#1d4ed8] text-[#1d4ed8]' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+            }`}
+          >
+            Shortlisted
+            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs font-bold">0</span>
+          </button>
+        </div>
 
         {/* Filter Bar */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-8 flex gap-8">
@@ -169,7 +229,15 @@ export default function Ranking({ onViewDetails }: { onViewDetails: (id: string)
             <div className="p-8 text-center text-slate-500 bg-white rounded-xl border border-slate-200">No ranked candidates found matching your filters.</div>
           ) : (
             sortedAndFilteredRankings.map((candidate) => (
-              <div key={candidate.id} className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm relative overflow-hidden flex flex-col text-left">
+              <div 
+                key={candidate.id} 
+                ref={candidate.id === highlightedCandidateId ? highlightedRef : null}
+                className={`rounded-xl border p-8 shadow-sm relative overflow-hidden flex flex-col text-left transition-all duration-1000 ${
+                  candidate.id === highlightedCandidateId 
+                    ? 'border-[#1d4ed8] ring-4 ring-[#1d4ed8]/20 bg-blue-50/30 shadow-md' 
+                    : 'bg-white border-slate-200'
+                }`}
+              >
                 
                 <div className="flex justify-between items-start mb-6">
                   <div className="flex items-center">
