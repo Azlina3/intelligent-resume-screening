@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import JobForm from './pages/JobForm';
 import CreateJob from './pages/CreateJob';
 import TrackStatus from './pages/TrackStatus';
+import EmailTemplates from './pages/EmailTemplates';
 
 function App() {
   return (
@@ -19,7 +20,9 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/apply/:jobId" element={<JobForm />} />
         <Route path="/create-job" element={<CreateJob />} />
+        <Route path="/edit-job/:jobId" element={<CreateJob />} />
         <Route path="/track-status" element={<TrackStatus />} />
+        <Route path="/email-templates" element={<EmailTemplates />} />
       </Routes>
     </BrowserRouter>
   );

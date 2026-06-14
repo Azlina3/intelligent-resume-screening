@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
 export default function CreateJob() {
   const navigate = useNavigate();
+  const { jobId } = useParams();
+  const isEditing = !!jobId;
 
   // Basic Details State
   const [jobTitle, setJobTitle] = useState('');
@@ -20,6 +22,7 @@ export default function CreateJob() {
   const [educationLevel, setEducationLevel] = useState('');
   const [acceptableDegrees, setAcceptableDegrees] = useState('');
   const [equivalentExperienceAccepted, setEquivalentExperienceAccepted] = useState(false);
+  const [acceptPursuingEducation, setAcceptPursuingEducation] = useState(false);
   const [strictEducationMatch, setStrictEducationMatch] = useState(true);
 
   // Core Skill Requirements State (3 Distinct Cards)
@@ -49,7 +52,49 @@ export default function CreateJob() {
     };
 
     fetchDepartments();
-  }, []);
+
+    if (isEditing) {
+      const fetchJobDetails = async () => {
+        const { data: job, error: jobError } = await supabase
+          .from('job')
+          .select('*, job_requirement(*)')
+          .eq('job_id', jobId)
+          .single();
+        
+        if (job) {
+          setJobTitle(job.job_title || '');
+          setDepartmentId(job.department_id?.toString() || '');
+          setLocation(job.location || '');
+          setEmploymentType(job.employment_type || '');
+          setMinSalary(job.min_salary?.toString() || '');
+          setMaxSalary(job.max_salary?.toString() || '');
+          setApplicationDeadline(job.application_deadline || '');
+          setMinTotalExperience(job.min_total_experience?.toString() || '');
+          setMinRelevantExperience(job.min_relevant_experience?.toString() || '');
+          setEducationLevel(job.education_level || '');
+          setEquivalentExperienceAccepted(job.equivalent_experience_accepted || false);
+          setAcceptPursuingEducation(job.accept_pursuing_education || false);
+          setStrictEducationMatch(job.strict_education_match || false);
+          setRequiresTechAssessment(job.requires_tech_assessment || false);
+          setResponsibilities(job.responsibilities || ['']);
+
+          if (job.job_requirement) {
+            const reqs = job.job_requirement;
+            const tech = reqs.filter((r: any) => r.type_id === 1).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 1 }));
+            const soft = reqs.filter((r: any) => r.type_id === 2).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 2 }));
+            const domain = reqs.filter((r: any) => r.type_id === 3).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 3 }));
+            const degs = reqs.filter((r: any) => r.type_id === 4).map((r: any) => r.requirement_name).join(', ');
+
+            if (tech.length > 0) setTechSkills(tech);
+            if (soft.length > 0) setSoftSkills(soft);
+            if (domain.length > 0) setDomainSkills(domain);
+            if (degs) setAcceptableDegrees(degs);
+          }
+        }
+      };
+      fetchJobDetails();
+    }
+  }, [jobId, isEditing]);
 
   const updateResponsibility = (index: number, value: string) => {
     const newReqs = [...responsibilities];
@@ -110,6 +155,7 @@ export default function CreateJob() {
         min_total_experience: minTotalExperience ? parseInt(minTotalExperience) : null,
         min_relevant_experience: minRelevantExperience ? parseInt(minRelevantExperience) : null,
         education_level: educationLevel,
+        accept_pursuing_education: acceptPursuingEducation,
         equivalent_experience_accepted: equivalentExperienceAccepted,
         strict_education_match: strictEducationMatch,
         requires_tech_assessment: requiresTechAssessment,
@@ -117,17 +163,37 @@ export default function CreateJob() {
         job_status: status
       };
 
-      console.log("Inserting Job:", jobPayload);
+      console.log(`${isEditing ? 'Updating' : 'Inserting'} Job:`, jobPayload);
 
-      const { data: jobData, error: jobError } = await supabase
-        .from('job')
-        .insert([jobPayload])
-        .select()
-        .single();
+      let newJobId;
 
-      if (jobError) throw jobError;
+      if (isEditing) {
+        const { error: jobError } = await supabase
+          .from('job')
+          .update(jobPayload)
+          .eq('job_id', jobId);
 
-      const newJobId = jobData.job_id;
+        if (jobError) throw jobError;
+        newJobId = jobId;
+
+        // Delete old requirements before inserting new ones
+        const { error: delError } = await supabase
+          .from('job_requirement')
+          .delete()
+          .eq('job_id', jobId);
+        
+        if (delError) throw delError;
+
+      } else {
+        const { data: jobData, error: jobError } = await supabase
+          .from('job')
+          .insert([jobPayload])
+          .select()
+          .single();
+
+        if (jobError) throw jobError;
+        newJobId = jobData.job_id;
+      }
 
       // 2. Prepare Skills Payload (Unified Array from all 3 cards)
       const allSkills = [
@@ -185,9 +251,9 @@ export default function CreateJob() {
 
       try {
         await navigator.clipboard.writeText(appLink);
-        alert(`Job successfully created as ${status}!\n\nThe application link has been copied to your clipboard:\n${appLink}`);
+        alert(`Job successfully ${isEditing ? 'updated' : 'created'} as ${status}!\n\nThe application link has been copied to your clipboard:\n${appLink}`);
       } catch (err) {
-        alert(`Job successfully created as ${status}!\n\nApplication Link (copy this):\n${appLink}`);
+        alert(`Job successfully ${isEditing ? 'updated' : 'created'} as ${status}!\n\nApplication Link (copy this):\n${appLink}`);
       }
 
       navigate('/dashboard'); // or appropriate route
@@ -213,7 +279,8 @@ export default function CreateJob() {
           placeholder={placeholder}
           value={skill.name}
           onChange={(e) => updateSkill(setter, index, 'name', e.target.value)}
-          className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
+          disabled={isEditing}
+          className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
         />
       </div>
       <div className="w-36">
@@ -221,7 +288,8 @@ export default function CreateJob() {
           <select
             value={skill.proficiency}
             onChange={(e) => updateSkill(setter, index, 'proficiency', e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
+            disabled={isEditing}
+            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
           >
             <option value="entry">Entry</option>
             <option value="intermediate">Intermediate</option>
@@ -237,7 +305,8 @@ export default function CreateJob() {
           <select
             value={skill.priority}
             onChange={(e) => updateSkill(setter, index, 'priority', e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
+            disabled={isEditing}
+            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
           >
             <option value="Mandatory">Mandatory</option>
             <option value="Preferred">Preferred</option>
@@ -251,7 +320,8 @@ export default function CreateJob() {
         <button
           type="button"
           onClick={() => removeSkillRow(setter, index)}
-          className="w-11 h-11 flex-shrink-0 rounded-lg bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shadow-sm"
+          disabled={isEditing}
+          className="w-11 h-11 flex-shrink-0 rounded-lg bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           title="Remove row"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -260,7 +330,8 @@ export default function CreateJob() {
           <button
             type="button"
             onClick={() => addSkillRow(setter, typeId)}
-            className="w-11 h-11 flex-shrink-0 rounded-lg bg-[#1d4ed8] text-white flex items-center justify-center hover:bg-[#1e40af] transition-colors shadow-sm"
+            disabled={isEditing}
+            className="w-11 h-11 flex-shrink-0 rounded-lg bg-[#1d4ed8] text-white flex items-center justify-center hover:bg-[#1e40af] transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
             title="Add row"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
@@ -289,8 +360,8 @@ export default function CreateJob() {
 
         {/* Page Header */}
         <div className="mb-10 text-left">
-          <h1 className="text-4xl font-serif font-bold text-[#0f172a] mb-3 tracking-tight">Create Job Opening</h1>
-          <p className="text-slate-500 text-base">Define the explicit criteria, structure, and scoring parameters for your new position.</p>
+          <h1 className="text-4xl font-serif font-bold text-[#0f172a] mb-3 tracking-tight">{isEditing ? 'Edit Job Opening' : 'Create Job Opening'}</h1>
+          <p className="text-slate-500 text-base">Define the explicit criteria, structure, and scoring parameters for your {isEditing ? 'existing' : 'new'} position.</p>
         </div>
 
         {/* Form Card */}
@@ -401,8 +472,9 @@ export default function CreateJob() {
                     type="number"
                     value={minTotalExperience}
                     onChange={(e) => setMinTotalExperience(e.target.value)}
+                    disabled={isEditing}
                     placeholder="Min Years"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div>
@@ -411,17 +483,19 @@ export default function CreateJob() {
                     type="number"
                     value={minRelevantExperience}
                     onChange={(e) => setMinRelevantExperience(e.target.value)}
+                    disabled={isEditing}
                     placeholder="Min Years"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Minimum Education Level</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Latest Education Level</label>
                   <div className="relative">
                     <select
                       value={educationLevel}
                       onChange={(e) => setEducationLevel(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
+                      disabled={isEditing}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                     >
                       <option value="" disabled>Select education level...</option>
                       <option value="no_requirement">No Requirement</option>
@@ -436,38 +510,64 @@ export default function CreateJob() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center md:pt-8">
-                  <label className="flex items-center cursor-pointer">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={equivalentExperienceAccepted}
-                        onChange={(e) => setEquivalentExperienceAccepted(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
-                      <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-4"></div>
-                    </div>
-                    <span className="ml-3 text-sm font-medium text-slate-700">Equivalent experience accepted in lieu of degree</span>
-                  </label>
-                </div>
-                <div className="flex items-center">
-                  <label className="flex items-center cursor-pointer">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={strictEducationMatch}
-                        onChange={(e) => setStrictEducationMatch(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
-                      <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-4"></div>
-                    </div>
-                    <div className="ml-3">
-                      <span className="block text-sm font-medium text-slate-700">Degree field must strictly match job domain</span>
-                      <span className="block text-xs text-slate-400 mt-0.5">AI will aggressively penalize applicants with unrelated degree fields</span>
-                    </div>
-                  </label>
+
+                <div className="md:col-span-2 mt-2 bg-slate-50 border border-slate-200 rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-slate-800 mb-4">Education Flexibility</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <label className="flex items-start cursor-pointer">
+                      <div className="relative flex-shrink-0 mt-0.5">
+                        <input
+                          type="checkbox"
+                          checked={acceptPursuingEducation}
+                          onChange={(e) => setAcceptPursuingEducation(e.target.checked)}
+                          disabled={isEditing}
+                          className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
+                        <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-4"></div>
+                      </div>
+                      <div className="ml-3">
+                        <span className="block text-sm font-medium text-slate-700">Accept Currently Pursuing</span>
+                        <span className="block text-xs text-slate-500 mt-0.5">Allow candidates still studying this degree</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start cursor-pointer">
+                      <div className="relative flex-shrink-0 mt-0.5">
+                        <input
+                          type="checkbox"
+                          checked={equivalentExperienceAccepted}
+                          onChange={(e) => setEquivalentExperienceAccepted(e.target.checked)}
+                          disabled={isEditing}
+                          className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
+                        <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-4"></div>
+                      </div>
+                      <div className="ml-3">
+                        <span className="block text-sm font-medium text-slate-700">Equivalent Experience</span>
+                        <span className="block text-xs text-slate-500 mt-0.5">Accept work experience in lieu of degree</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start cursor-pointer">
+                      <div className="relative flex-shrink-0 mt-0.5">
+                        <input
+                          type="checkbox"
+                          checked={strictEducationMatch}
+                          onChange={(e) => setStrictEducationMatch(e.target.checked)}
+                          disabled={isEditing}
+                          className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
+                        <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-4"></div>
+                      </div>
+                      <div className="ml-3">
+                        <span className="block text-sm font-medium text-slate-700">Strict Domain Match</span>
+                        <span className="block text-xs text-slate-500 mt-0.5">Penalize unrelated fields of study</span>
+                      </div>
+                    </label>
+                  </div>
                 </div>
                 
                 <div className="md:col-span-2 mt-4">
@@ -476,8 +576,9 @@ export default function CreateJob() {
                     type="text"
                     value={acceptableDegrees}
                     onChange={(e) => setAcceptableDegrees(e.target.value)}
+                    disabled={isEditing}
                     placeholder="e.g., Computer Science, Business, Economics (comma separated)"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -597,7 +698,7 @@ export default function CreateJob() {
                 onClick={() => handleSubmit('active')}
                 className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm"
               >
-                Create & Generate Link
+                {isEditing ? 'Save & Publish' : 'Create & Generate Link'}
               </button>
               <button
                 type="button"

@@ -47,10 +47,10 @@ export default function TrackStatus() {
 
   const getStatusIndex = (status: string) => {
     const s = status?.toLowerCase() || '';
-    if (s.includes('reject')) return -1;
-    if (s.includes('pending')) return 0;
+    if (s.includes('reject') || s.includes('unsuccessful')) return -1;
+    if (s.includes('pending') || s.includes('received')) return 0;
     if (s.includes('shortlist') || s.includes('review')) return 1;
-    if (s.includes('interview')) return 2;
+    if (s.includes('interview') || s.includes('hold')) return 2;
     if (s.includes('offer') || s.includes('hire')) return 3;
     return 0; // Default
   };
@@ -58,7 +58,7 @@ export default function TrackStatus() {
   const stages = [
     { label: "Application Received", description: "We've safely received your application." },
     { label: "Under Review", description: "Our hiring team is reviewing your profile." },
-    { label: "Interviewing", description: "You've been selected for an interview!" },
+    { label: "Interviewing", description: "You have been invited to an interview session, please check your email for details." },
     { label: "Decision", description: "Final hiring decision made." }
   ];
 
@@ -172,7 +172,7 @@ export default function TrackStatus() {
                 <div className="text-left md:text-right">
                   <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-blue-50 text-[#1d4ed8] font-medium text-sm border border-blue-100 mb-2">
                     <span className="w-2 h-2 rounded-full bg-[#1d4ed8] mr-2"></span>
-                    {result.application_status}
+                    {result.application_status === 'On Hold' ? 'Interviewing' : result.application_status}
                   </div>
                   <p className="text-xs text-slate-400">
                     Applied on: {new Date(result.applied_at).toLocaleDateString()}

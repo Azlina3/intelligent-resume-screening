@@ -73,6 +73,11 @@ export function isSkillMatch(
       if (req.includes(cand) || cand.includes(req)) return true;
     }
     
+    // Handle 'communication' vs language proficiency
+    if (req.includes('communication') && (cand.includes('bilingual') || cand.includes('native') || cand.includes('professional') || cand.includes('presentation') || cand.includes('speaking'))) {
+      return true;
+    }
+    
     return false;
   });
 }
@@ -96,7 +101,7 @@ export function evaluateCandidateMatch(
   ]);
 
   const candidateLanguagesSet = new Set(
-    (candidateProfile.languages || []).map((l: any) => l.language?.toLowerCase().trim() || l.name?.toLowerCase().trim())
+    (candidateProfile.languages || []).map((l: any) => `${l.language || l.name} ${l.proficiency || ''}`.toLowerCase().trim())
   );
 
   // 2. Loop Through Skill & Language Requirements

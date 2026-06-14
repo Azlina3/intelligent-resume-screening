@@ -10,7 +10,7 @@ interface CandidateData {
   match: number;
 }
 
-export default function Candidates() {
+export default function Candidates({ onViewInRanking }: { onViewInRanking?: (applicationId: string, jobTitle: string) => void }) {
   const [candidates, setCandidates] = useState<CandidateData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -182,7 +182,11 @@ export default function Candidates() {
               <div className="p-8 text-center text-slate-500">No candidates found matching your filters.</div>
             ) : (
               filteredCandidates.map((candidate) => (
-                <div key={candidate.id} className="grid grid-cols-12 gap-4 p-5 items-center hover:bg-slate-50/50 transition-colors text-left cursor-pointer group">
+                <div 
+                  key={candidate.id} 
+                  onClick={() => onViewInRanking && onViewInRanking(candidate.id, candidate.job)}
+                  className="grid grid-cols-12 gap-4 p-5 items-center hover:bg-slate-50/50 transition-colors text-left cursor-pointer group"
+                >
                   <div className="col-span-4 pl-2">
                     <div className="font-semibold text-slate-800 text-[15px]">{candidate.name}</div>
                     <div className="text-slate-500 text-sm">{candidate.email}</div>

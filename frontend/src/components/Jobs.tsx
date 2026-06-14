@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../config/supabaseClient';
 
-export default function Jobs() {
+interface JobsProps {
+  onViewRanking?: (jobTitle?: string) => void;
+}
+
+export default function Jobs({ onViewRanking }: JobsProps) {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -15,6 +19,10 @@ export default function Jobs() {
           *,
           job_department (
             department_name
+          ),
+          application (
+            application_id,
+            application_status
           )
         `)
         .order('created_at', { ascending: false });
@@ -32,6 +40,19 @@ export default function Jobs() {
 
   const activeJobs = jobs.filter(job => job.job_status === 'active');
   const archivedJobs = jobs.filter(job => job.job_status !== 'active');
+
+  const getApplicantStats = (job: any) => {
+    const apps = job.application || [];
+    const total = apps.length;
+    let unreviewed = 0;
+    let shortlisted = 0;
+    apps.forEach((a: any) => {
+      const s = a.application_status?.toLowerCase() || '';
+      if (s === 'received' || s === 'pending') unreviewed++;
+      if (s.includes('shortlist') || s.includes('review')) shortlisted++;
+    });
+    return { total, unreviewed, shortlisted };
+  };
 
   const getDaysAgo = (dateStr: string) => {
     if (!dateStr) return 'Unknown';
@@ -56,6 +77,48 @@ export default function Jobs() {
     const appLink = `${window.location.origin}/apply/${jobId}`;
     navigator.clipboard.writeText(appLink);
     alert(`Application link copied:\n${appLink}`);
+  };
+
+  const handleDuplicateJob = async (jobToDuplicate: any) => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return alert("Not authenticated");
+
+      const { job_id, created_at, updated_at, job_department, user_id, application, ...rest } = jobToDuplicate;
+      
+      const newJob = {
+        ...rest,
+        job_title: `${jobToDuplicate.job_title} (Copy)`,
+        job_status: 'draft',
+        user_id: userData.user.id
+      };
+
+      const { data: newJobData, error: jobError } = await supabase.from('job').insert([newJob]).select().single();
+      if (jobError) throw jobError;
+
+      // Fetch existing requirements
+      const { data: reqs, error: reqsError } = await supabase
+        .from('job_requirement')
+        .select('*')
+        .eq('job_id', jobToDuplicate.job_id);
+        
+      if (reqsError) throw reqsError;
+
+      if (reqs && reqs.length > 0) {
+        const newReqs = reqs.map((r: any) => {
+          const { requirement_id, created_at, updated_at, ...reqRest } = r;
+          return { ...reqRest, job_id: newJobData.job_id };
+        });
+        
+        const { error: insReqsError } = await supabase.from('job_requirement').insert(newReqs);
+        if (insReqsError) throw insReqsError;
+      }
+      
+      alert("Job duplicated successfully!");
+      window.location.reload();
+    } catch (error: any) {
+      alert(`Error duplicating job: ${error.message}`);
+    }
   };
 
   return (
@@ -118,6 +181,16 @@ export default function Jobs() {
                         <div className="flex items-center gap-3">
                           <span className="px-3 py-1 bg-[#1d4ed8] text-white text-xs font-medium rounded-full">Active</span>
                           <button 
+                            onClick={() => handleDuplicateJob(job)}
+                            className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
+                            title="Duplicate Job"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                            </svg>
+                          </button>
+                          <button 
+                            onClick={() => navigate(`/edit-job/${job.job_id}`)}
                             className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
                             title="Edit Job"
                           >
@@ -139,7 +212,12 @@ export default function Jobs() {
                         </div>
                         <div className="flex items-center text-sm text-slate-600">
                           <span className="mr-3 opacity-50">👥</span>
-                          0 applicants (<span className="text-[#1d4ed8] font-medium mx-1">0 unreviewed</span> • <span className="text-[#16a34a] font-medium ml-1">0 shortlisted</span>)
+                          {(() => {
+                            const stats = getApplicantStats(job);
+                            return (
+                              <>{stats.total} applicants (<span className="text-[#1d4ed8] font-medium mx-1">{stats.unreviewed} unreviewed</span> • <span className="text-[#16a34a] font-medium ml-1">{stats.shortlisted} shortlisted</span>)</>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center text-sm text-slate-600">
                           <span className="mr-3 opacity-50">🕒</span>
@@ -148,7 +226,10 @@ export default function Jobs() {
                       </div>
 
                       <div className="mt-auto grid grid-cols-2 gap-3">
-                        <button className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white py-2.5 rounded-lg font-medium text-sm transition-colors">
+                        <button 
+                          onClick={() => onViewRanking && onViewRanking(job.job_title)}
+                          className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white py-2.5 rounded-lg font-medium text-sm transition-colors"
+                        >
                           View Applicants
                         </button>
                         <button 
@@ -178,7 +259,18 @@ export default function Jobs() {
                     <div key={job.job_id} className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col opacity-80 hover:opacity-100 transition-opacity">
                       <div className="flex justify-between items-start mb-4">
                         <h3 className="text-xl font-serif font-bold text-[#0f172a] pl-5">{job.job_title}</h3>
-                        <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full capitalize">{job.job_status}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full capitalize">{job.job_status}</span>
+                          <button 
+                            onClick={() => handleDuplicateJob(job)}
+                            className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
+                            title="Duplicate Job"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                       
                       <div className="text-slate-500 text-sm mb-4 pl-5">
@@ -192,7 +284,7 @@ export default function Jobs() {
                         </div>
                         <div className="flex items-center text-sm text-slate-600">
                           <span className="mr-3 opacity-50">👥</span>
-                          0 historical applicants
+                          {job.application?.length || 0} historical applicants
                         </div>
                         <div className="flex items-center text-sm text-slate-600">
                           <span className="mr-3 opacity-50">🕒</span>
@@ -205,7 +297,7 @@ export default function Jobs() {
                           className="w-full border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-lg font-medium text-sm transition-colors mb-3"
                           onClick={() => {
                             if (job.job_status === 'draft') {
-                              alert("Edit draft feature coming soon.");
+                              navigate(`/edit-job/${job.job_id}`);
                             } else {
                               alert("Historical records coming soon.");
                             }
