@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+
 import { supabase } from '../supabaseClient';
 import DatePicker from '../components/DatePicker';
 import TimePicker from '../components/TimePicker';
@@ -62,11 +62,30 @@ If you have any questions in the meantime, please feel free to reply to this ema
 
 Best regards,
 TalentScreen Recruitment Team`
+  },
+  {
+    id: 'successful',
+    title: 'Offer / Successful Application Email',
+    description: 'Congratulations - Offer for [Position]',
+    subject: 'Offer of Employment - [Position]',
+    body: `Dear [Candidate Name],
+
+Congratulations! Following your recent interviews, we are thrilled to offer you the position of [Position] at TalentScreen Sdn. Bhd.
+
+Our team was thoroughly impressed by your skills, experience, and the wonderful energy you brought to our conversations. We are confident you will be a fantastic addition to our company.
+
+Please find the details of your offer and next steps in the attached official offer letter. We would appreciate it if you could review and let us know your decision by [Date].
+
+If you have any questions or need further clarification, please do not hesitate to reach out.
+
+We are excited about the prospect of you joining us!
+
+Warm regards,
+TalentScreen Recruitment Team`
   }
 ];
 
 export default function EmailTemplates({ candidateData }: { candidateData?: any }) {
-  const navigate = useNavigate();
   const [selectedTemplateId, setSelectedTemplateId] = useState('interview');
   const [interviewMode, setInterviewMode] = useState<'Online' | 'Physical'>('Online');
   
@@ -183,8 +202,9 @@ export default function EmailTemplates({ candidateData }: { candidateData?: any 
       
       let newStatus = 'Received';
       if (selectedTemplateId === 'follow-up') newStatus = 'Under Review';
-      if (selectedTemplateId === 'reject') newStatus = 'Unsuccessful';
+      if (selectedTemplateId === 'rejection') newStatus = 'Unsuccessful';
       if (selectedTemplateId === 'interview') newStatus = 'On Hold';
+      if (selectedTemplateId === 'successful') newStatus = 'Successful';
 
       const { error: updateError } = await supabase
         .from('application')

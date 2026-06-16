@@ -51,7 +51,7 @@ export default function TrackStatus() {
     if (s.includes('pending') || s.includes('received')) return 0;
     if (s.includes('shortlist') || s.includes('review')) return 1;
     if (s.includes('interview') || s.includes('hold')) return 2;
-    if (s.includes('offer') || s.includes('hire')) return 3;
+    if (s.includes('offer') || s.includes('hire') || s.includes('successful')) return 3;
     return 0; // Default
   };
 
@@ -59,7 +59,7 @@ export default function TrackStatus() {
     { label: "Application Received", description: "We've safely received your application." },
     { label: "Under Review", description: "Our hiring team is reviewing your profile." },
     { label: "Interviewing", description: "You have been invited to an interview session, please check your email for details." },
-    { label: "Decision", description: "Final hiring decision made." }
+    { label: "Successful", description: "Congratulations! You have been selected for the position." }
   ];
 
   return (
@@ -75,12 +75,6 @@ export default function TrackStatus() {
               Aura <span className="text-[#1d4ed8]">Careers</span>
             </span>
           </div>
-          <button 
-            onClick={() => navigate('/login')}
-            className="text-sm font-medium text-slate-600 hover:text-[#1d4ed8] transition-colors"
-          >
-            Staff Login
-          </button>
         </div>
       </header>
 

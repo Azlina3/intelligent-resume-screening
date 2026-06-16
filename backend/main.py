@@ -9,8 +9,14 @@ from typing import List, Optional
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+from supabase import create_client, Client
 
 load_dotenv()
+
+# Initialize Supabase client with service role key for admin tasks
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+supabase_admin: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 app = FastAPI(
     title="Intelligent Resume Screening API",
@@ -139,6 +145,94 @@ async def embed_skills(request: EmbedRequest):
         return {"embeddings": vector_arrays}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate embeddings: {str(e)}")
+
+# --- System Admin User Management Endpoints ---
+
+@app.get("/api/admin/users")
+async def get_all_users():
+    try:
+        res = supabase_admin.table("staff_user").select("*, job_department(department_name)").order("name").execute()
+        return res.data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+    role: str
+    department_id: int
+
+@app.post("/api/admin/users")
+async def create_user(request: CreateUserRequest):
+    try:
+        # Create user in Supabase Auth
+        user = supabase_admin.auth.admin.create_user({
+            "email": request.email,
+            "password": request.password,
+            "email_confirm": True
+        })
+        user_id = user.user.id
+        
+        # Insert into staff_user table
+        staff_data = {
+            "user_id": user_id,
+            "email": request.email,
+            "name": request.name,
+            "role": request.role,
+            "department_id": request.department_id
+        }
+        res = supabase_admin.table("staff_user").insert(staff_data).execute()
+        return {"status": "success", "user": res.data[0]}
+    except Exception as e:
+        # Rollback auth creation if db insert fails could be done here, but ignoring for simplicity
+        raise HTTPException(status_code=400, detail=str(e))
+
+class UpdateUserRequest(BaseModel):
+    email: str
+    name: str
+    role: str
+    department_id: int
+
+@app.put("/api/admin/users/{user_id}")
+async def update_user(user_id: str, request: UpdateUserRequest):
+    try:
+        # Update email in auth if it changed
+        supabase_admin.auth.admin.update_user_by_id(user_id, {"email": request.email})
+        
+        # Update staff_user table
+        staff_data = {
+            "email": request.email,
+            "name": request.name,
+            "role": request.role,
+            "department_id": request.department_id
+        }
+        res = supabase_admin.table("staff_user").update(staff_data).eq("user_id", user_id).execute()
+        return {"status": "success", "user": res.data[0]}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/api/admin/users/{user_id}")
+async def delete_user(user_id: str):
+    try:
+        # Delete from staff_user table
+        supabase_admin.table("staff_user").delete().eq("user_id", user_id).execute()
+        # Delete from Supabase Auth
+        supabase_admin.auth.admin.delete_user(user_id)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str
+
+@app.post("/api/admin/users/{user_id}/reset-password")
+async def reset_password(user_id: str, request: ResetPasswordRequest):
+    try:
+        supabase_admin.auth.admin.update_user_by_id(user_id, {"password": request.new_password})
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # Add a fast Uvicorn entry block
 if __name__ == "__main__":

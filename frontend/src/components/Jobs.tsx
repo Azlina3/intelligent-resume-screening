@@ -4,16 +4,17 @@ import { supabase } from '../config/supabaseClient';
 
 interface JobsProps {
   onViewRanking?: (jobTitle?: string) => void;
+  departmentFilterId?: number | null;
 }
 
-export default function Jobs({ onViewRanking }: JobsProps) {
+export default function Jobs({ onViewRanking, departmentFilterId }: JobsProps) {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchJobs = async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('job')
         .select(`
           *,
@@ -24,11 +25,28 @@ export default function Jobs({ onViewRanking }: JobsProps) {
             application_id,
             application_status
           )
-        `)
-        .order('created_at', { ascending: false });
+        `);
+
+      if (departmentFilterId) {
+        query = query.eq('department_id', departmentFilterId);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
         
       if (data) {
-        setJobs(data);
+        const now = new Date().getTime();
+        const updatedJobs = data.map(job => {
+          if (job.job_status === 'active' && job.application_deadline) {
+            const diffTime = new Date(job.application_deadline).getTime() - now;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays < 0) {
+              job.job_status = 'closed';
+              supabase.from('job').update({ job_status: 'closed' }).eq('job_id', job.job_id).then();
+            }
+          }
+          return job;
+        });
+        setJobs(updatedJobs);
       } else if (error) {
         console.error("Error fetching jobs:", error);
       }
@@ -36,7 +54,7 @@ export default function Jobs({ onViewRanking }: JobsProps) {
     };
 
     fetchJobs();
-  }, []);
+  }, [departmentFilterId]);
 
   const activeJobs = jobs.filter(job => job.job_status === 'active');
   const archivedJobs = jobs.filter(job => job.job_status !== 'active');
@@ -129,12 +147,14 @@ export default function Jobs({ onViewRanking }: JobsProps) {
             <h1 className="text-[34px] font-serif font-bold text-[#0f172a] mb-2 tracking-tight">Job Openings</h1>
             <p className="text-slate-500 text-[15px]">Manage your active job postings and consult archived hiring cycles.</p>
           </header>
-          <button 
-            onClick={() => navigate('/create-job')}
-            className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-5 py-2.5 rounded-lg font-medium text-sm flex items-center transition-colors shadow-sm"
-          >
-            <span className="mr-2 text-lg leading-none">+</span> Create Job
-          </button>
+          {!departmentFilterId && (
+            <button 
+              onClick={() => navigate('/create-job')}
+              className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-5 py-2.5 rounded-lg font-medium text-sm flex items-center transition-colors shadow-sm"
+            >
+              <span className="mr-2 text-lg leading-none">+</span> Create Job
+            </button>
+          )}
         </div>
 
         {/* Filters */}
@@ -180,24 +200,28 @@ export default function Jobs({ onViewRanking }: JobsProps) {
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="px-3 py-1 bg-[#1d4ed8] text-white text-xs font-medium rounded-full">Active</span>
-                          <button 
-                            onClick={() => handleDuplicateJob(job)}
-                            className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
-                            title="Duplicate Job"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                            </svg>
-                          </button>
-                          <button 
-                            onClick={() => navigate(`/edit-job/${job.job_id}`)}
-                            className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
-                            title="Edit Job"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
-                            </svg>
-                          </button>
+                          {!departmentFilterId && (
+                            <>
+                              <button 
+                                onClick={() => handleDuplicateJob(job)}
+                                className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
+                                title="Duplicate Job"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                                </svg>
+                              </button>
+                              <button 
+                                onClick={() => navigate(`/edit-job/${job.job_id}`)}
+                                className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
+                                title="Edit Job"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                                </svg>
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                       
@@ -261,15 +285,17 @@ export default function Jobs({ onViewRanking }: JobsProps) {
                         <h3 className="text-xl font-serif font-bold text-[#0f172a] pl-5">{job.job_title}</h3>
                         <div className="flex items-center gap-3">
                           <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full capitalize">{job.job_status}</span>
-                          <button 
-                            onClick={() => handleDuplicateJob(job)}
-                            className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
-                            title="Duplicate Job"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                            </svg>
-                          </button>
+                          {!departmentFilterId && (
+                            <button 
+                              onClick={() => handleDuplicateJob(job)}
+                              className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
+                              title="Duplicate Job"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </div>
                       
@@ -293,18 +319,20 @@ export default function Jobs({ onViewRanking }: JobsProps) {
                       </div>
 
                       <div className="mt-auto">
-                        <button 
-                          className="w-full border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-lg font-medium text-sm transition-colors mb-3"
-                          onClick={() => {
-                            if (job.job_status === 'draft') {
-                              navigate(`/edit-job/${job.job_id}`);
-                            } else {
-                              alert("Historical records coming soon.");
-                            }
-                          }}
-                        >
-                          {job.job_status === 'draft' ? 'Edit Draft' : 'View Historical Records'}
-                        </button>
+                        {(!departmentFilterId || job.job_status !== 'draft') && (
+                          <button 
+                            className="w-full border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-lg font-medium text-sm transition-colors mb-3"
+                            onClick={() => {
+                              if (job.job_status === 'draft') {
+                                navigate(`/edit-job/${job.job_id}`);
+                              } else {
+                                alert("Historical records coming soon.");
+                              }
+                            }}
+                          >
+                            {job.job_status === 'draft' ? 'Edit Draft' : 'View Historical Records'}
+                          </button>
+                        )}
                         <p className="text-xs text-slate-400 px-1">
                           {job.job_status === 'draft' ? 'Draft Record — Hidden from public.' : 'Archived Record — Locked for data integrity.'}
                         </p>

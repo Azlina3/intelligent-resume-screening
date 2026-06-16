@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../config/supabaseClient';
 import ProfileSettings from './ProfileSettings';
 import Jobs from './Jobs';
+import Candidates from './Candidates';
+import Ranking from './Ranking';
+import CandidateDetails from './CandidateDetails';
 
 // Icon components
 const BriefcaseIcon = () => (
@@ -31,15 +34,30 @@ const ManagerViewIcon = () => (
   </svg>
 );
 
-const ChevronRightIcon = () => (
+const MenuBriefcaseIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
   </svg>
 );
 
-export default function ManagerDashboard({ userName }: { userName?: string }) {
+const UsersIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+  </svg>
+);
+
+const ChartBarIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+  </svg>
+);
+
+export default function ManagerDashboard({ userName, departmentId, departmentName }: { userName?: string, departmentId?: number | null, departmentName?: string }) {
   const navigate = useNavigate();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'jobs' | 'candidates' | 'ranking' | 'emails'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'jobs' | 'candidates' | 'ranking' | 'candidate-details'>('dashboard');
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
+  const [selectedJobForRanking, setSelectedJobForRanking] = useState<string>('All Positions');
+  const [highlightedCandidateId, setHighlightedCandidateId] = useState<string | null>(null);
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -63,27 +81,31 @@ export default function ManagerDashboard({ userName }: { userName?: string }) {
               <a 
                 href="#" 
                 onClick={(e) => { e.preventDefault(); setCurrentView('dashboard'); }}
-                className={`flex items-center px-8 py-3 ${currentView === 'dashboard' ? 'bg-white text-[#1e293b] rounded-r-[32px] mr-6 shadow-sm' : 'text-slate-300 hover:text-white transition-colors'} font-medium`}
+                className={`flex items-center px-8 py-2.5 transition-colors ${currentView === 'dashboard' ? 'text-white font-medium bg-white/5' : 'text-slate-300 hover:text-white'}`}
               >
-                <span className="mr-3">
+                <span className="mr-3 opacity-60">
                   <ManagerViewIcon />
                 </span>
-                Manager View
+                <span className="text-[15px]">Manager View</span>
               </a>
             </li>
-            {['Jobs', 'Candidates', 'Ranking', 'Emails'].map((item) => {
-              const viewName = item.toLowerCase() as typeof currentView;
+            {[
+              { name: 'Jobs', icon: <MenuBriefcaseIcon /> },
+              { name: 'Ranking', icon: <ChartBarIcon /> },
+              { name: 'Candidates', icon: <UsersIcon /> }
+            ].map((item) => {
+              const viewName = item.name.toLowerCase() as typeof currentView;
               return (
-              <li key={item}>
+              <li key={item.name}>
                 <a 
                   href="#" 
                   onClick={(e) => { e.preventDefault(); setCurrentView(viewName); }}
                   className={`flex items-center px-8 py-2.5 transition-colors ${currentView === viewName ? 'text-white font-medium bg-white/5' : 'text-slate-300 hover:text-white'}`}
                 >
                   <span className="mr-3 opacity-60">
-                    <ChevronRightIcon />
+                    {item.icon}
                   </span>
-                  <span className="text-[15px]">{item}</span>
+                  <span className="text-[15px]">{item.name}</span>
                 </a>
               </li>
               );
@@ -97,10 +119,10 @@ export default function ManagerDashboard({ userName }: { userName?: string }) {
               <a 
                 href="#" 
                 onClick={(e) => { e.preventDefault(); setCurrentView('settings'); }}
-                className={`flex items-center ${currentView === 'settings' ? 'px-8 py-3 bg-white text-[#1e293b] rounded-r-[32px] mr-6 shadow-sm font-medium' : 'px-8 text-slate-300 hover:text-white text-[15px]'}`}
+                className={`flex items-center px-8 py-2.5 transition-colors ${currentView === 'settings' ? 'text-white font-medium bg-white/5' : 'text-slate-300 hover:text-white'}`}
               >
                 <span className="mr-3 opacity-60">⚙️</span>
-                Profile Settings
+                <span className="text-[15px]">Profile Settings</span>
               </a>
             </li>
             <li>
@@ -114,11 +136,13 @@ export default function ManagerDashboard({ userName }: { userName?: string }) {
       </aside>
 
       {/* Main Content Area */}
-      {currentView === 'dashboard' ? (
-      <main className="flex-1 p-10 px-12 overflow-y-auto">
+      {(() => {
+        if (currentView === 'dashboard') {
+          return (
+            <main className="flex-1 p-10 px-12 overflow-y-auto">
         <header className="mb-10 text-left">
           <h1 className="text-[34px] font-serif font-bold text-[#0f172a] mb-2 tracking-tight">Welcome back, {userName || 'Manager'}</h1>
-          <p className="text-slate-500 text-[15px]">Scope restricted to: Technology & Engineering Department.</p>
+          <p className="text-slate-500 text-[15px]">Scope restricted to: {departmentName || 'Your'} Department.</p>
         </header>
 
         {/* Top Layout Metrics Panel */}
@@ -330,17 +354,48 @@ export default function ManagerDashboard({ userName }: { userName?: string }) {
           
         </div>
       </main>
-      ) : currentView === 'jobs' ? (
-        <Jobs />
-      ) : currentView === 'settings' ? (
-        <ProfileSettings userName={userName} />
-      ) : (
-        <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
-          <div className="max-w-4xl mx-auto flex items-center justify-center h-full">
-            <p className="text-slate-500 text-lg">The {currentView} view is coming soon.</p>
-          </div>
-        </main>
-      )}
+      );
+      } else if (currentView === 'jobs') {
+        return <Jobs 
+          departmentFilterId={departmentId} 
+          onViewRanking={(jobTitle) => {
+            setSelectedJobForRanking(jobTitle || 'All Positions');
+            setCurrentView('ranking');
+          }}
+        />;
+      } else if (currentView === 'candidates') {
+        return <Candidates 
+          departmentFilterId={departmentId} 
+          onViewInRanking={(id, jobTitle) => {
+            setHighlightedCandidateId(id);
+            setSelectedJobForRanking(jobTitle);
+            setCurrentView('ranking');
+          }}
+        />;
+      } else if (currentView === 'ranking') {
+        return <Ranking 
+          departmentFilterId={departmentId} 
+          onViewDetails={(id) => { setSelectedApplicationId(id); setCurrentView('candidate-details'); }}
+          initialJobFilter={selectedJobForRanking}
+          highlightedCandidateId={highlightedCandidateId}
+        />;
+      } else if (currentView === 'candidate-details' && selectedApplicationId) {
+        return <CandidateDetails 
+          applicationId={selectedApplicationId} 
+          onBack={() => setCurrentView('ranking')} 
+        />;
+      } else if (currentView === 'settings') {
+        return <ProfileSettings userName={userName} />;
+      } else {
+        return (
+          <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
+            <div className="max-w-4xl mx-auto flex items-center justify-center h-full">
+              <p className="text-slate-500 text-lg">The {currentView} view is coming soon.</p>
+            </div>
+          </main>
+        );
+      }
+    })()}
     </div>
   );
 }
