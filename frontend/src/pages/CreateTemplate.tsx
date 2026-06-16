@@ -2,15 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
-export default function CreateJob() {
+export default function CreateTemplate() {
   const navigate = useNavigate();
-  const { jobId } = useParams();
-  const isEditing = !!jobId;
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
-  const [availableTemplates, setAvailableTemplates] = useState<any[]>([]);
+  const { templateId } = useParams();
+  const isEditing = !!templateId;
+  
+  interface Skill {
+    name: string;
+    proficiency: string;
+    priority: string;
+    type_id?: number;
+  }
 
-  // Templates now act as a pre-fill rather than a strict lock
-  const isFieldDisabled = false;
+    // Template Details
+  const [templateName, setTemplateName] = useState('');
 
   // Basic Details State
   const [jobTitle, setJobTitle] = useState('');
@@ -61,13 +66,6 @@ export default function CreateJob() {
 
     fetchDepartments();
 
-    const fetchTemplates = async () => {
-      const { data } = await supabase.from('job_template').select('template_id, template_name');
-      if (data) setAvailableTemplates(data);
-    };
-    fetchTemplates();
-
-
     const fetchRole = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -87,32 +85,32 @@ export default function CreateJob() {
     fetchRole();
 
     if (isEditing) {
-      const fetchJobDetails = async () => {
-        const { data: job } = await supabase
-          .from('job')
-          .select('*, job_requirement(*)')
-          .eq('job_id', jobId)
+      const fetchTemplateDetails = async () => {
+        const { data: temp } = await supabase
+          .from('job_template')
+          .select('*, job_template_requirement(*)')
+          .eq('template_id', templateId)
           .single();
         
-        if (job) {
-          setJobTitle(job.job_title || '');
-          setDepartmentId(job.department_id?.toString() || '');
-          setLocation(job.location || '');
-          setEmploymentType(job.employment_type || '');
-          setMinSalary(job.min_salary?.toString() || '');
-          setMaxSalary(job.max_salary?.toString() || '');
-          setApplicationDeadline(job.application_deadline || '');
-          setMinTotalExperience(job.min_total_experience?.toString() || '');
-          setMinRelevantExperience(job.min_relevant_experience?.toString() || '');
-          setEducationLevel(job.education_level || '');
-          setEquivalentExperienceAccepted(job.equivalent_experience_accepted || false);
-          setAcceptPursuingEducation(job.accept_pursuing_education || false);
-          setStrictEducationMatch(job.strict_education_match || false);
-          setRequiresTechAssessment(job.requires_tech_assessment || false);
-          setResponsibilities(job.responsibilities || ['']);
+        if (temp) {
+          setTemplateName(temp.template_name || '');
+          setJobTitle(temp.job_title || '');
+          setDepartmentId(temp.department_id?.toString() || '');
+          setLocation(temp.location || '');
+          setEmploymentType(temp.employment_type || '');
+          setMinSalary(temp.min_salary?.toString() || '');
+          setMaxSalary(temp.max_salary?.toString() || '');
+          setMinTotalExperience(temp.min_total_experience?.toString() || '');
+          setMinRelevantExperience(temp.min_relevant_experience?.toString() || '');
+          setEducationLevel(temp.education_level || '');
+          setEquivalentExperienceAccepted(temp.equivalent_experience_accepted || false);
+          setAcceptPursuingEducation(temp.accept_pursuing_education || false);
+          setStrictEducationMatch(temp.strict_education_match || false);
+          setRequiresTechAssessment(temp.requires_tech_assessment || false);
+          setResponsibilities(temp.responsibilities || ['']);
 
-          if (job.job_requirement) {
-            const reqs = job.job_requirement;
+          if (temp.job_template_requirement) {
+            const reqs = temp.job_template_requirement;
             const tech = reqs.filter((r: any) => r.type_id === 1).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 1 }));
             const soft = reqs.filter((r: any) => r.type_id === 2).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 2 }));
             const domain = reqs.filter((r: any) => r.type_id === 3).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 3 }));
@@ -125,59 +123,9 @@ export default function CreateJob() {
           }
         }
       };
-      fetchJobDetails();
+      fetchTemplateDetails();
     }
-  }, [jobId, isEditing]);
-
-  
-  const handleTemplateSelection = async (templateId: string) => {
-    setSelectedTemplate(templateId);
-    if (!templateId) return;
-
-    const { data: temp } = await supabase.from('job_template').select('*').eq('template_id', templateId).single();
-    if (temp) {
-      setJobTitle(temp.job_title || '');
-      setDepartmentId(temp.department_id?.toString() || '');
-      setLocation(temp.location || '');
-      setEmploymentType(temp.employment_type || '');
-      setMinSalary(temp.min_salary?.toString() || '');
-      setMaxSalary(temp.max_salary?.toString() || '');
-      setMinTotalExperience(temp.min_total_experience?.toString() || '');
-      setMinRelevantExperience(temp.min_relevant_experience?.toString() || '');
-      setEducationLevel(temp.education_level || '');
-      setAcceptPursuingEducation(temp.accept_pursuing_education || false);
-      setEquivalentExperienceAccepted(temp.equivalent_experience_accepted || false);
-      setStrictEducationMatch(temp.strict_education_match || false);
-      setRequiresTechAssessment(temp.requires_tech_assessment || false);
-      setResponsibilities(temp.responsibilities || ['']);
-    }
-
-    const { data: reqs } = await supabase.from('job_template_requirement').select('*').eq('template_id', templateId);
-    if (reqs) {
-      const mapReqToSkill = (r: any) => ({
-        name: r.requirement_name,
-        proficiency: r.proficiency_level,
-        priority: r.is_mandatory ? 'Mandatory' : 'Preferred',
-        type_id: r.type_id
-      });
-      const tech = reqs.filter((r: any) => r.type_id === 1);
-      const soft = reqs.filter((r: any) => r.type_id === 2);
-      const domain = reqs.filter((r: any) => r.type_id === 3);
-
-      if (tech.length > 0) setTechSkills(tech.map(mapReqToSkill));
-      else setTechSkills([{ name: '', proficiency: 'intermediate', priority: 'Mandatory', type_id: 1 }]);
-      
-      if (soft.length > 0) setSoftSkills(soft.map(mapReqToSkill));
-      else setSoftSkills([{ name: '', proficiency: 'intermediate', priority: 'Mandatory', type_id: 2 }]);
-      
-      if (domain.length > 0) setDomainSkills(domain.map(mapReqToSkill));
-      else setDomainSkills([{ name: '', proficiency: 'intermediate', priority: 'Mandatory', type_id: 3 }]);
-
-      const degs = reqs.filter((r: any) => r.type_id === 4);
-      if (degs.length > 0) setAcceptableDegrees(degs.map((r: any) => r.requirement_name).join(', '));
-      else setAcceptableDegrees('');
-    }
-  };
+  }, [templateId, isEditing]);
 
   const updateResponsibility = (index: number, value: string) => {
     const newReqs = [...responsibilities];
@@ -215,32 +163,29 @@ export default function CreateJob() {
     });
   };
 
-  const handleSubmit = async (status: 'active' | 'draft') => {
+  const handleSubmit = async () => {
     try {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
-
       if (!user) {
-        alert("You must be logged in to create a job.");
+        alert('You must be logged in to create a template.');
         return;
       }
 
-      // Enforce Junior HR custom job rule
-      let finalStatus = status;
-      if (status === 'active' && userRole === 'hr_junior' && !selectedTemplate && !isEditing) {
-        finalStatus = 'pending_approval';
+      if (!templateName || !jobTitle) {
+         alert('Template Name and Job Title are required.');
+         return;
       }
 
-      // 1. Prepare Job Payload
-      const jobPayload = {
-        user_id: user.id,
+      const templatePayload = {
+        created_by: user.id,
+        template_name: templateName,
         job_title: jobTitle,
         department_id: departmentId ? parseInt(departmentId) : null,
         location: location,
         employment_type: employmentType,
         min_salary: minSalary ? parseFloat(minSalary) : null,
         max_salary: maxSalary ? parseFloat(maxSalary) : null,
-        application_deadline: applicationDeadline || null,
         min_total_experience: minTotalExperience ? parseInt(minTotalExperience) : null,
         min_relevant_experience: minRelevantExperience ? parseInt(minRelevantExperience) : null,
         education_level: educationLevel,
@@ -249,110 +194,69 @@ export default function CreateJob() {
         strict_education_match: strictEducationMatch,
         requires_tech_assessment: requiresTechAssessment,
         responsibilities: responsibilities.filter(r => r.trim() !== ''),
-        job_status: finalStatus
       };
 
-      console.log(`${isEditing ? 'Updating' : 'Inserting'} Job:`, jobPayload);
-
-      let newJobId;
+      let currentTemplateId = templateId;
 
       if (isEditing) {
-        const { error } = await supabase
-          .from('job')
-          .update(jobPayload)
-          .eq('job_id', jobId);
-
-        if (error) throw error;
-        newJobId = jobId;
-
-        // Delete old requirements before inserting new ones
-        const { error: delError } = await supabase
-          .from('job_requirement')
-          .delete()
-          .eq('job_id', jobId);
-        
-        if (delError) throw delError;
-
+        const { error: updateError } = await supabase
+          .from('job_template')
+          .update(templatePayload)
+          .eq('template_id', currentTemplateId);
+        if (updateError) throw updateError;
       } else {
-        const { data: jobData, error: jobError } = await supabase
-          .from('job')
-          .insert([jobPayload])
+        const { data: newTemplate, error: insertError } = await supabase
+          .from('job_template')
+          .insert([templatePayload])
           .select()
           .single();
-
-        if (jobError) throw jobError;
-        newJobId = jobData.job_id;
+        if (insertError) throw insertError;
+        currentTemplateId = newTemplate.template_id;
       }
 
-      // 2. Prepare Skills Payload (Unified Array from all 3 cards)
-      const allSkills = [
-        ...techSkills, 
-        ...softSkills, 
-        ...domainSkills
-      ].filter(s => s.name.trim() !== '');
+      // 2. Prepare Requirements
+      const prepareReqs = (skills: Skill[], typeId: number) => {
+        return skills
+          .filter(s => s.name.trim() !== '')
+          .map(s => ({
+            template_id: currentTemplateId,
+            requirement_name: s.name,
+            proficiency_level: s.proficiency,
+            is_mandatory: s.priority === 'Mandatory',
+            type_id: typeId
+          }));
+      };
 
-      const acceptableDegreesArray = acceptableDegrees.split(',').map(d => d.trim()).filter(Boolean);
-      const itemsToEmbed = [...allSkills.map(s => s.name), ...acceptableDegreesArray];
+      const allReqs = [
+        ...prepareReqs(techSkills, 1),
+        ...prepareReqs(softSkills, 2),
+        ...prepareReqs(domainSkills, 3)
+      ];
 
-      if (itemsToEmbed.length > 0) {
-        // Fetch embeddings for all skills + degrees
-        const embedRes = await fetch("http://localhost:8000/api/embed-skills", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ skills: itemsToEmbed })
+      // Prepare acceptable degrees requirement
+      const acceptableDegreesArray = acceptableDegrees.split(',').map(d => d.trim()).filter(d => d !== '');
+      if (acceptableDegreesArray.length > 0) {
+        allReqs.push({
+          template_id: currentTemplateId,
+          type_id: 4, // Assuming 4 is education/degrees
+          requirement_name: acceptableDegreesArray.join(', '),
+          proficiency_level: 'advanced',
+          is_mandatory: true
         });
-        
-        if (!embedRes.ok) {
-          throw new Error("Failed to generate vector embeddings for skills.");
-        }
-        
-        const embedData = await embedRes.json();
-        const embeddings = embedData.embeddings;
-
-        const skillsPayload = allSkills.map((skill, index) => ({
-          job_id: newJobId,
-          requirement_name: skill.name,
-          proficiency_level: skill.proficiency,
-          is_mandatory: skill.priority === 'Mandatory',
-          type_id: skill.type_id,
-          embedding: embeddings[index]
-        }));
-
-        const degreesPayload = acceptableDegreesArray.map((degree, index) => ({
-          job_id: newJobId,
-          requirement_name: degree,
-          proficiency_level: 'intermediate',
-          is_mandatory: true,
-          type_id: 4,
-          embedding: embeddings[allSkills.length + index]
-        }));
-
-        console.log("Inserting Requirements:", [...skillsPayload, ...degreesPayload]);
-
-        const { error: skillsError } = await supabase
-          .from('job_requirement')
-          .insert([...skillsPayload, ...degreesPayload]);
-
-        if (skillsError) throw skillsError;
       }
 
-      const appLink = `${window.location.origin}/apply/${newJobId}`;
-
-      try {
-        await navigator.clipboard.writeText(appLink);
-        if (finalStatus === 'pending_approval') {
-           alert(`Job successfully submitted! Since it is a custom job, it is currently "Pending Approval" by a Senior HR. They will review it shortly.`);
-        } else {
-           alert(`Job successfully ${isEditing ? 'updated' : 'created'} as ${finalStatus}!\n\nThe application link has been copied to your clipboard:\n${appLink}`);
-        }
-      } catch (err) {
-        if (finalStatus === 'pending_approval') {
-           alert(`Job successfully submitted for approval!`);
-        } else {
-           alert(`Job successfully ${isEditing ? 'updated' : 'created'} as ${finalStatus}!\n\nApplication Link (copy this):\n${appLink}`);
-        }
+      if (isEditing) {
+         await supabase.from('job_template_requirement').delete().eq('template_id', currentTemplateId);
       }
 
+      if (allReqs.length > 0) {
+        const { error: reqError } = await supabase
+          .from('job_template_requirement')
+          .insert(allReqs);
+        if (reqError) throw reqError;
+      }
+
+      alert(`Template successfully ${isEditing ? 'updated' : 'created'}!`);
       navigate('/dashboard'); // or appropriate route
     } catch (error: any) {
       console.error("Error creating job:", error);
@@ -376,8 +280,8 @@ export default function CreateJob() {
           placeholder={placeholder}
           value={skill.name}
           onChange={(e) => updateSkill(setter, index, 'name', e.target.value)}
-          disabled={isFieldDisabled}
-          className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+          
+          className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
         />
       </div>
       <div className="w-36">
@@ -385,8 +289,8 @@ export default function CreateJob() {
           <select
             value={skill.proficiency}
             onChange={(e) => updateSkill(setter, index, 'proficiency', e.target.value)}
-            disabled={isFieldDisabled}
-            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+            
+            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
           >
             <option value="entry">Entry</option>
             <option value="intermediate">Intermediate</option>
@@ -402,8 +306,8 @@ export default function CreateJob() {
           <select
             value={skill.priority}
             onChange={(e) => updateSkill(setter, index, 'priority', e.target.value)}
-            disabled={isFieldDisabled}
-            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+            
+            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
           >
             <option value="Mandatory">Mandatory</option>
             <option value="Preferred">Preferred</option>
@@ -417,7 +321,7 @@ export default function CreateJob() {
         <button
           type="button"
           onClick={() => removeSkillRow(setter, index)}
-          disabled={isFieldDisabled}
+          
           className="w-11 h-11 flex-shrink-0 rounded-lg bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           title="Remove row"
         >
@@ -427,7 +331,7 @@ export default function CreateJob() {
           <button
             type="button"
             onClick={() => addSkillRow(setter, typeId)}
-            disabled={isFieldDisabled}
+            
             className="w-11 h-11 flex-shrink-0 rounded-lg bg-[#1d4ed8] text-white flex items-center justify-center hover:bg-[#1e40af] transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
             title="Add row"
           >
@@ -451,50 +355,40 @@ export default function CreateJob() {
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
-            Back to Jobs
+            Back to Dashboard
           </button>
         </div>
 
         {/* Page Header */}
         <div className="mb-10 text-left">
-          <h1 className="text-4xl font-serif font-bold text-[#0f172a] mb-3 tracking-tight">{isEditing ? 'Edit Job Opening' : 'Create Job Opening'}</h1>
-          <p className="text-slate-500 text-base">Define the explicit criteria, structure, and scoring parameters for your {isEditing ? 'existing' : 'new'} position.</p>
+          <h1 className="text-4xl font-serif font-bold text-[#0f172a] mb-3 tracking-tight">{isEditing ? 'Edit Template' : 'Create Template'}</h1>
+          <p className="text-slate-500 text-base">Define standard criteria for your templates.</p>
         </div>
 
         {/* Form Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <form className="p-8 sm:p-10 text-left space-y-12" onSubmit={(e) => e.preventDefault()}>
 
-            {/* 0. Template Selection */}
-            {!isEditing && (
-              <section className="bg-blue-50/50 border border-blue-100 rounded-xl p-6">
-                <div className="flex items-center justify-between gap-6">
-                  <div className="flex-1">
-                    <h2 className="text-lg font-serif font-bold text-[#0f172a] mb-1">Use a Template</h2>
-                    <p className="text-sm text-slate-500">Speed up your posting by using a pre-approved job template.</p>
-                  </div>
-                  <div className="w-1/2 relative">
-                    <select
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
-                      onChange={(e) => handleTemplateSelection(e.target.value)}
-                      value={selectedTemplate}
-                    >
-                      <option value="" disabled>Choose a template...</option>
-                      {availableTemplates.map((t) => (
-                        <option key={t.template_id} value={t.template_id}>
-                          {t.template_name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-400">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                    </div>
-                  </div>
+            
+            {/* 0. Template Details */}
+            <section>
+              <h2 className="text-xl font-serif font-bold text-[#0f172a] mb-6">Template Details</h2>
+              <div className="grid grid-cols-1 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Template Name</label>
+                  <input
+                    type="text"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                    placeholder="e.g., Standard Frontend Developer"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
+                  />
                 </div>
-              </section>
-            )}
-
+              </div>
+            </section>
+            
             {/* 1. Basic Details */}
+
             <section>
               <h2 className="text-xl font-serif font-bold text-[#0f172a] mb-6">Basic Details</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -504,9 +398,9 @@ export default function CreateJob() {
                     type="text"
                     value={jobTitle}
                     onChange={(e) => setJobTitle(e.target.value)}
-                    disabled={isFieldDisabled}
+                    
                     placeholder="e.g., Senior Frontend Developer"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
                   />
                 </div>
                 <div>
@@ -515,8 +409,8 @@ export default function CreateJob() {
                     <select
                       value={departmentId}
                       onChange={(e) => setDepartmentId(e.target.value)}
-                      disabled={isFieldDisabled}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
                     >
                       <option value="" disabled>Select department...</option>
                       {departments.map((dept) => (
@@ -536,9 +430,9 @@ export default function CreateJob() {
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    disabled={isFieldDisabled}
+                    
                     placeholder="e.g., Remote, Hybrid, or New York, NY"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
                   />
                 </div>
                 <div>
@@ -547,8 +441,8 @@ export default function CreateJob() {
                     <select
                       value={employmentType}
                       onChange={(e) => setEmploymentType(e.target.value)}
-                      disabled={isFieldDisabled}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
                     >
                       <option value="" disabled>Select type...</option>
                       <option value="full_time">Full-time</option>
@@ -568,30 +462,18 @@ export default function CreateJob() {
                       type="number"
                       value={minSalary}
                       onChange={(e) => setMinSalary(e.target.value)}
-                      disabled={isFieldDisabled}
                       placeholder="Min"
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
                     />
                     <span className="text-slate-400 font-medium">-</span>
                     <input
                       type="number"
                       value={maxSalary}
                       onChange={(e) => setMaxSalary(e.target.value)}
-                      disabled={isFieldDisabled}
                       placeholder="Max"
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
                     />
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Application Deadline</label>
-                  <input
-                    type="date"
-                    value={applicationDeadline}
-                    onChange={(e) => setApplicationDeadline(e.target.value)}
-                    disabled={isFieldDisabled}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                  />
                 </div>
               </div>
             </section>
@@ -606,9 +488,9 @@ export default function CreateJob() {
                     type="number"
                     value={minTotalExperience}
                     onChange={(e) => setMinTotalExperience(e.target.value)}
-                    disabled={isFieldDisabled}
+                    
                     placeholder="Min Years"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
                   />
                 </div>
                 <div>
@@ -617,9 +499,9 @@ export default function CreateJob() {
                     type="number"
                     value={minRelevantExperience}
                     onChange={(e) => setMinRelevantExperience(e.target.value)}
-                    disabled={isFieldDisabled}
+                    
                     placeholder="Min Years"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
                   />
                 </div>
                 <div>
@@ -628,8 +510,8 @@ export default function CreateJob() {
                     <select
                       value={educationLevel}
                       onChange={(e) => setEducationLevel(e.target.value)}
-                      disabled={isFieldDisabled}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
                     >
                       <option value="" disabled>Select education level...</option>
                       <option value="no_requirement">No Requirement</option>
@@ -654,7 +536,7 @@ export default function CreateJob() {
                           type="checkbox"
                           checked={acceptPursuingEducation}
                           onChange={(e) => setAcceptPursuingEducation(e.target.checked)}
-                          disabled={isFieldDisabled}
+                          
                           className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                         <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
@@ -672,7 +554,7 @@ export default function CreateJob() {
                           type="checkbox"
                           checked={equivalentExperienceAccepted}
                           onChange={(e) => setEquivalentExperienceAccepted(e.target.checked)}
-                          disabled={isFieldDisabled}
+                          
                           className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                         <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
@@ -690,7 +572,7 @@ export default function CreateJob() {
                           type="checkbox"
                           checked={strictEducationMatch}
                           onChange={(e) => setStrictEducationMatch(e.target.checked)}
-                          disabled={isFieldDisabled}
+                          
                           className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                         <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
@@ -712,7 +594,7 @@ export default function CreateJob() {
                     onChange={(e) => setAcceptableDegrees(e.target.value)}
                     disabled={isEditing}
                     placeholder="e.g., Computer Science, Business, Economics (comma separated)"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
                   />
                 </div>
               </div>
@@ -778,12 +660,12 @@ export default function CreateJob() {
                       type="checkbox"
                       checked={requiresTechAssessment}
                       onChange={(e) => setRequiresTechAssessment(e.target.checked)}
-                      disabled={isFieldDisabled}
+                      
                       className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <svg className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity bg-[#1d4ed8] absolute inset-0 rounded-sm m-[1px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                   </div>
-                  <span className={`text-sm font-medium transition-colors ${isFieldDisabled ? 'text-slate-400' : 'text-slate-700 group-hover:text-slate-900'}`}>Include Technical Screening Flag (Requires coding/technical test)</span>
+                  <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900 transition-colors">Include Technical Screening Flag (Requires coding/technical test)</span>
                 </label>
               </div>
             </section>
@@ -799,14 +681,14 @@ export default function CreateJob() {
                       placeholder="e.g., Develop and maintain responsive web applications..."
                       value={resp}
                       onChange={(e) => updateResponsibility(index, e.target.value)}
-                      disabled={isFieldDisabled}
-                      className="flex-1 bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      
+                      className="flex-1 bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
                     />
                     {index === responsibilities.length - 1 ? (
                       <button
                         type="button"
                         onClick={addResponsibility}
-                        disabled={isFieldDisabled}
+                        
                         className="w-11 h-11 flex-shrink-0 rounded-lg bg-[#0f172a] text-white flex items-center justify-center hover:bg-slate-800 transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
@@ -815,7 +697,7 @@ export default function CreateJob() {
                       <button
                         type="button"
                         onClick={() => removeResponsibility(index)}
-                        disabled={isFieldDisabled}
+                        
                         className="w-11 h-11 flex-shrink-0 rounded-lg bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -833,30 +715,10 @@ export default function CreateJob() {
             <div className="flex items-center gap-4">
               <button
                 type="button"
-                onClick={() => handleSubmit('active')}
+                onClick={() => handleSubmit()}
                 className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm"
               >
-                {isEditing ? 'Save & Publish' : 'Create & Generate Link'}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSubmit('draft')}
-                className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm"
-              >
-                Save as Draft
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (jobId) {
-                    window.open(`/apply/${jobId}`, '_blank');
-                  } else {
-                    alert("Please save the job as a draft or publish it to preview the job form.");
-                  }
-                }}
-                className="text-[#1d4ed8] hover:text-[#1e40af] px-4 py-3 font-medium text-sm transition-colors"
-              >
-                Preview Job Form
+                {isEditing ? 'Save Template' : 'Create Template'}
               </button>
             </div>
             <button

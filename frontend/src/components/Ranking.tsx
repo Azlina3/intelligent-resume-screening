@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 
 interface RankingData {
   id: string;
   name: string;
   job: string;
+  status: string;
   overallScore: number;
   skillsMatch: number;
   educationMatch: number;
@@ -28,11 +29,13 @@ const EyeIcon = () => (
 export default function Ranking({ 
   onViewDetails, 
   initialJobFilter = 'All Positions',
-  highlightedCandidateId
+  highlightedCandidateId,
+  departmentFilterId
 }: { 
-  onViewDetails: (id: string) => void, 
+  onViewDetails?: (id: string) => void, 
   initialJobFilter?: string,
-  highlightedCandidateId?: string | null
+  highlightedCandidateId?: string | null,
+  departmentFilterId?: number | null
 }) {
   const [rankings, setRankings] = useState<RankingData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,24 +53,31 @@ export default function Ranking({
 
   useEffect(() => {
     fetchRankings();
-  }, []);
+  }, [departmentFilterId]);
 
   const fetchRankings = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('score')
         .select(`
           score_id,
           total_score,
           rank,
-          application:application_id (
+          application:application_id!inner (
             application_id,
+            application_status,
             candidate:candidate_id ( name ),
-            job:job_id ( job_title )
+            job:job_id!inner ( job_title, department_id )
           ),
           score_breakdown ( criteria, score_value )
         `);
+        
+      if (departmentFilterId) {
+        query = query.eq('application.job.department_id', departmentFilterId);
+      }
+      
+      const { data, error } = await query;
         
       if (error) throw error;
       
@@ -98,6 +108,7 @@ export default function Ranking({
             id: item.application?.application_id || item.score_id,
             name: item.application?.candidate?.name || 'Unknown',
             job: item.application?.job?.job_title || 'Unknown',
+            status: item.application?.application_status || 'Received',
             overallScore: Math.round(item.total_score || 0),
             skillsMatch,
             educationMatch,
@@ -123,9 +134,9 @@ export default function Ranking({
   const sortedAndFilteredRankings = useMemo(() => {
     let filtered = rankings;
     
-    // Status Filter (Mock logic for now since we don't have DB status yet)
+    // Status Filter 
     if (activeTab === 'Shortlisted') {
-      filtered = filtered.filter(r => (r as any).isShortlisted); // Assuming isShortlisted will be added later
+      filtered = filtered.filter(r => r.status === 'Shortlisted');
     }
 
     // Job filter
@@ -176,7 +187,9 @@ export default function Ranking({
             }`}
           >
             Shortlisted
-            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs font-bold">0</span>
+            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs font-bold">
+              {rankings.filter(r => r.status === 'Shortlisted').length}
+            </span>
           </button>
         </div>
 
@@ -300,12 +313,14 @@ export default function Ranking({
                 </div>
 
                 <div>
-                  <button 
-                    onClick={() => onViewDetails(candidate.id)}
-                    className="inline-flex items-center px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                  >
-                    <span className="mr-2 text-slate-400"><EyeIcon /></span> View Details
-                  </button>
+                  {onViewDetails && (
+                    <button 
+                      onClick={() => onViewDetails(candidate.id)}
+                      className="inline-flex items-center px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <span className="mr-2 text-slate-400"><EyeIcon /></span> View Details
+                    </button>
+                  )}
                 </div>
 
               </div>

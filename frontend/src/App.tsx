@@ -7,6 +7,8 @@ import CreateJob from './pages/CreateJob';
 import TrackStatus from './pages/TrackStatus';
 import EmailTemplates from './pages/EmailTemplates';
 
+import CreateTemplate from './pages/CreateTemplate';
+
 function App() {
   return (
     <BrowserRouter>
@@ -21,6 +23,8 @@ function App() {
         <Route path="/apply/:jobId" element={<JobForm />} />
         <Route path="/create-job" element={<CreateJob />} />
         <Route path="/edit-job/:jobId" element={<CreateJob />} />
+        <Route path="/create-template" element={<CreateTemplate />} />
+        <Route path="/edit-template/:templateId" element={<CreateTemplate />} />
         <Route path="/track-status" element={<TrackStatus />} />
         <Route path="/email-templates" element={<EmailTemplates />} />
       </Routes>

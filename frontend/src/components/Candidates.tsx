@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 
 interface CandidateData {
@@ -10,7 +10,7 @@ interface CandidateData {
   match: number;
 }
 
-export default function Candidates({ onViewInRanking }: { onViewInRanking?: (applicationId: string, jobTitle: string) => void }) {
+export default function Candidates({ onViewInRanking, departmentFilterId }: { onViewInRanking?: (applicationId: string, jobTitle: string) => void, departmentFilterId?: number | null }) {
   const [candidates, setCandidates] = useState<CandidateData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -21,20 +21,26 @@ export default function Candidates({ onViewInRanking }: { onViewInRanking?: (app
   
   useEffect(() => {
     fetchCandidates();
-  }, []);
+  }, [departmentFilterId]);
 
   const fetchCandidates = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('application')
         .select(`
           application_id,
           application_status,
           candidate:candidate_id ( name, email ),
-          job:job_id ( job_title ),
+          job:job_id!inner ( job_title, department_id ),
           score ( total_score )
         `);
+        
+      if (departmentFilterId) {
+        query = query.eq('job.department_id', departmentFilterId);
+      }
+      
+      const { data, error } = await query;
         
       if (error) throw error;
       
@@ -69,13 +75,14 @@ export default function Candidates({ onViewInRanking }: { onViewInRanking?: (app
 
   // Status counts for quick filters
   const statusCounts = useMemo(() => {
-    const counts = { pending: 0, processed: 0, shortlisted: 0, rejected: 0 };
+    const counts = { received: 0, underReview: 0, shortlisted: 0, onHold: 0, successful: 0, unsuccessful: 0 };
     candidates.forEach(c => {
-      const s = c.status.toLowerCase();
-      if (s.includes('reject')) counts.rejected++;
-      else if (s.includes('shortlist') || s.includes('review')) counts.shortlisted++;
-      else if (s.includes('process')) counts.processed++;
-      else counts.pending++;
+      if (c.status === 'Received') counts.received++;
+      else if (c.status === 'Under Review') counts.underReview++;
+      else if (c.status === 'Shortlisted') counts.shortlisted++;
+      else if (c.status === 'On Hold') counts.onHold++;
+      else if (c.status === 'Successful') counts.successful++;
+      else if (c.status === 'Unsuccessful') counts.unsuccessful++;
     });
     return counts;
   }, [candidates]);
@@ -130,10 +137,11 @@ export default function Candidates({ onViewInRanking }: { onViewInRanking?: (app
               >
                 <option>All Statuses</option>
                 <option>Received</option>
+                <option>Under Review</option>
                 <option>Shortlisted</option>
-                <option>Processed</option>
-                <option>Interviewing</option>
-                <option>Rejected</option>
+                <option>On Hold</option>
+                <option>Successful</option>
+                <option>Unsuccessful</option>
               </select>
             </div>
             
@@ -153,10 +161,12 @@ export default function Candidates({ onViewInRanking }: { onViewInRanking?: (app
 
         {/* Quick Filters */}
         <div className="flex flex-wrap gap-3 mb-8">
-          <button onClick={() => setStatusFilter('Received')} className={`px-4 py-1.5 rounded-full ${statusFilter === 'Received' ? 'bg-[#1d4ed8] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} text-xs font-semibold transition-colors`}>Pending ({statusCounts.pending})</button>
-          <button onClick={() => setStatusFilter('Processed')} className={`px-4 py-1.5 rounded-full ${statusFilter === 'Processed' ? 'bg-[#1d4ed8] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} text-xs font-semibold transition-colors`}>Processed ({statusCounts.processed})</button>
+          <button onClick={() => setStatusFilter('Received')} className={`px-4 py-1.5 rounded-full ${statusFilter === 'Received' ? 'bg-[#1d4ed8] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} text-xs font-semibold transition-colors`}>Received ({statusCounts.received})</button>
+          <button onClick={() => setStatusFilter('Under Review')} className={`px-4 py-1.5 rounded-full ${statusFilter === 'Under Review' ? 'bg-[#1d4ed8] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} text-xs font-semibold transition-colors`}>Under Review ({statusCounts.underReview})</button>
           <button onClick={() => setStatusFilter('Shortlisted')} className={`px-4 py-1.5 rounded-full ${statusFilter === 'Shortlisted' ? 'bg-[#1d4ed8] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} text-xs font-semibold transition-colors`}>Shortlisted ({statusCounts.shortlisted})</button>
-          <button onClick={() => setStatusFilter('Rejected')} className={`px-4 py-1.5 rounded-full ${statusFilter === 'Rejected' ? 'bg-[#1d4ed8] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} text-xs font-semibold transition-colors`}>Rejected ({statusCounts.rejected})</button>
+          <button onClick={() => setStatusFilter('On Hold')} className={`px-4 py-1.5 rounded-full ${statusFilter === 'On Hold' ? 'bg-[#1d4ed8] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} text-xs font-semibold transition-colors`}>On Hold ({statusCounts.onHold})</button>
+          <button onClick={() => setStatusFilter('Successful')} className={`px-4 py-1.5 rounded-full ${statusFilter === 'Successful' ? 'bg-[#1d4ed8] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} text-xs font-semibold transition-colors`}>Successful ({statusCounts.successful})</button>
+          <button onClick={() => setStatusFilter('Unsuccessful')} className={`px-4 py-1.5 rounded-full ${statusFilter === 'Unsuccessful' ? 'bg-[#1d4ed8] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} text-xs font-semibold transition-colors`}>Unsuccessful ({statusCounts.unsuccessful})</button>
           {statusFilter !== 'All Statuses' && (
             <button onClick={() => setStatusFilter('All Statuses')} className="px-4 py-1.5 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 text-slate-600 text-xs font-semibold transition-colors">Clear</button>
           )}
@@ -195,12 +205,14 @@ export default function Candidates({ onViewInRanking }: { onViewInRanking?: (app
                     {candidate.job}
                   </div>
                   <div className="col-span-2">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                      candidate.status.toLowerCase().includes('shortlist') 
-                        ? 'bg-green-50 text-green-700 border-green-200' 
-                        : candidate.status.toLowerCase().includes('reject')
-                        ? 'bg-red-50 text-red-700 border-red-200'
-                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border-2 ${
+                      candidate.status === 'Received' ? 'bg-blue-50 text-blue-700 border-blue-500' :
+                      candidate.status === 'Under Review' ? 'bg-purple-50 text-purple-700 border-purple-500' :
+                      candidate.status === 'Shortlisted' ? 'bg-emerald-50 text-emerald-700 border-emerald-500' :
+                      candidate.status === 'On Hold' ? 'bg-orange-50 text-orange-700 border-orange-500' :
+                      candidate.status === 'Successful' ? 'bg-green-50 text-green-700 border-green-500' :
+                      candidate.status === 'Unsuccessful' ? 'bg-red-50 text-red-700 border-red-500' :
+                      'bg-slate-50 text-slate-700 border-slate-500'
                     }`}>
                       {candidate.status}
                     </span>

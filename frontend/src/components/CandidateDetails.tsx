@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { isSkillMatch } from '../utils/MatchingEngine';
 
@@ -30,6 +30,9 @@ const ExperienceIcon = () => (
 const DocumentIcon = () => (
   <svg className="w-5 h-5 text-slate-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
 );
+const LinkIcon = () => (
+  <svg className="w-5 h-5 text-slate-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+);
 
 export default function CandidateDetails({ 
   applicationId, 
@@ -44,9 +47,32 @@ export default function CandidateDetails({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [showRejectInput, setShowRejectInput] = useState(false);
+  const [rejectNotes, setRejectNotes] = useState('');
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+
   useEffect(() => {
     fetchData();
+    fetchRole();
   }, [applicationId]);
+
+  const fetchRole = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: staffData } = await supabase
+        .from('staff_user')
+        .select('role')
+        .eq('email', user.email)
+        .single();
+      
+      if (staffData) {
+        setUserRole(staffData.role);
+      } else {
+        setUserRole(user.user_metadata?.role);
+      }
+    }
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -150,6 +176,29 @@ export default function CandidateDetails({
     }
   };
 
+  const handleReject = async () => {
+    if (!rejectNotes.trim()) {
+      alert("Please provide a reason for rejection.");
+      return;
+    }
+    setIsRejecting(true);
+    try {
+      const { error } = await supabase
+        .from('application')
+        .update({ 
+          manager_notes: rejectNotes.trim()
+        })
+        .eq('application_id', data.application_id);
+      if (error) throw error;
+      alert("Rejection note saved. HR has been notified.");
+      setShowRejectInput(false);
+      window.location.reload();
+    } catch (err: any) {
+      alert("Failed to reject candidate: " + err.message);
+      setIsRejecting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
@@ -188,7 +237,20 @@ export default function CandidateDetails({
 
         <div className="flex justify-between items-start mb-10">
           <div className="text-left">
-            <h1 className="text-[34px] font-serif font-bold text-[#0f172a] mb-1 tracking-tight">{candidate.name || 'Unknown'}</h1>
+            <div className="flex items-center gap-4 mb-1">
+              <h1 className="text-[34px] font-serif font-bold text-[#0f172a] tracking-tight">{candidate.name || 'Unknown'}</h1>
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold border-2 ${
+                data.application_status === 'Received' ? 'bg-blue-50 text-blue-700 border-blue-500' :
+                data.application_status === 'Under Review' ? 'bg-purple-50 text-purple-700 border-purple-500' :
+                data.application_status === 'Shortlisted' ? 'bg-emerald-50 text-emerald-700 border-emerald-500' :
+                data.application_status === 'On Hold' ? 'bg-orange-50 text-orange-700 border-orange-500' :
+                data.application_status === 'Successful' ? 'bg-green-50 text-green-700 border-green-500' :
+                data.application_status === 'Unsuccessful' ? 'bg-red-50 text-red-700 border-red-500' :
+                'bg-slate-50 text-slate-700 border-slate-500'
+              }`}>
+                {data.application_status || 'Unknown Status'}
+              </span>
+            </div>
             <p className="text-slate-500 text-lg">{job.job_title || 'Unknown Position'}</p>
           </div>
           <div className="text-right">
@@ -200,6 +262,18 @@ export default function CandidateDetails({
             <div className="text-slate-500 text-sm font-medium">Match Score</div>
           </div>
         </div>
+
+        {data.manager_notes && (
+          <div className="mb-8 p-5 bg-red-50 border border-red-200 rounded-xl flex items-start">
+            <XCircleIcon />
+            <div>
+              <h3 className="text-red-800 font-medium font-serif">
+                {data.application_status === 'Unsuccessful' ? 'Candidate Rejected' : 'Rejection Recommended'}
+              </h3>
+              <p className="text-red-700 text-sm mt-1">{data.manager_notes}</p>
+            </div>
+          </div>
+        )}
 
         {/* 2-Column Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -312,6 +386,48 @@ export default function CandidateDetails({
               </div>
             </div>
             
+            {/* Languages Card (Moved to Main Column) */}
+            {data.language && data.language.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm text-left">
+                <h2 className="text-2xl font-serif font-bold text-[#0f172a] mb-8">Languages</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {data.language.map((lang: any, index: number) => (
+                    <div key={index} className="flex justify-between items-center p-4 border border-slate-100 rounded-lg bg-slate-50/50">
+                      <span className="font-medium text-slate-800 text-sm capitalize">{lang.language || lang.name}</span>
+                      <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
+                        {lang.proficiency || 'Not specified'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Employment Details Card (Moved to Main Column) */}
+            <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm text-left">
+              <h2 className="text-2xl font-serif font-bold text-[#0f172a] mb-8">Employment Details</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="p-5 border border-slate-100 rounded-lg bg-slate-50/50">
+                  <div className="text-sm font-medium text-slate-500 mb-1">Availability</div>
+                  <div className="text-lg font-bold text-slate-800">
+                    {data.availability || 'Not provided'}
+                  </div>
+                </div>
+                <div className="p-5 border border-slate-100 rounded-lg bg-slate-50/50">
+                  <div className="text-sm font-medium text-slate-500 mb-1">Current Salary</div>
+                  <div className="text-lg font-bold text-slate-800">
+                    {data.current_salary ? `RM ${Number(data.current_salary).toLocaleString()}` : 'Not provided'}
+                  </div>
+                </div>
+                <div className="p-5 border border-slate-100 rounded-lg bg-slate-50/50">
+                  <div className="text-sm font-medium text-slate-500 mb-1">Expected Salary</div>
+                  <div className="text-lg font-bold text-slate-800">
+                    {data.expected_salary ? `RM ${Number(data.expected_salary).toLocaleString()}` : 'Not provided'}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
           </div>
 
           {/* Sidebar Column (Right) */}
@@ -353,6 +469,19 @@ export default function CandidateDetails({
                     <div className="text-sm font-medium text-slate-800">{candidate.phone || 'N/A'}</div>
                   </div>
                 </div>
+                <div className="flex items-start">
+                  <LinkIcon />
+                  <div className="ml-4">
+                    <div className="text-xs text-slate-400 font-medium mb-0.5">Portfolio Link</div>
+                    <div className="text-sm font-medium text-slate-800">
+                      {data.portfolio_link ? (
+                        <a href={data.portfolio_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+                          {data.portfolio_link}
+                        </a>
+                      ) : 'Not provided'}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -390,29 +519,12 @@ export default function CandidateDetails({
               </div>
             </div>
 
-            {/* Languages Card */}
-            {data.language && data.language.length > 0 && (
-              <div className="bg-white rounded-xl border border-slate-200 p-7 shadow-sm text-left">
-                <h3 className="text-lg font-serif font-bold text-[#0f172a] mb-6">Languages</h3>
-                <div className="space-y-4">
-                  {data.language.map((lang: any, index: number) => (
-                    <div key={index} className="flex justify-between items-center p-3 border border-slate-100 rounded-lg bg-slate-50/50">
-                      <span className="font-medium text-slate-800 text-sm capitalize">{lang.language || lang.name}</span>
-                      <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
-                        {lang.proficiency || 'Not specified'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Actions Card */}
             <div className="bg-white rounded-xl border border-slate-200 p-7 shadow-sm text-left">
               <h3 className="text-lg font-serif font-bold text-[#0f172a] mb-6">Actions</h3>
               <div className="space-y-3">
                 <button 
-                  className={`w-full ${data.application_status === 'Shortlisted' ? 'bg-green-600 hover:bg-green-700 border-green-600' : 'bg-[#1d4ed8] hover:bg-[#1e40af] border-[#1d4ed8]'} text-white border py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center`}
+                  className={`w-full ${data.application_status === 'Shortlisted' ? 'bg-green-600 border-green-600 cursor-default' : 'bg-[#1d4ed8] hover:bg-[#1e40af] border-[#1d4ed8]'} disabled:opacity-75 disabled:cursor-not-allowed text-white border py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center`}
                   onClick={async () => {
                     if (data.application_status === 'Shortlisted') return;
                     try {
@@ -427,25 +539,63 @@ export default function CandidateDetails({
                       alert("Failed to shortlist candidate: " + err.message);
                     }
                   }}
+                  disabled={data.application_status === 'Unsuccessful' || data.application_status === 'Shortlisted' || data.application_status === 'Successful'}
                 >
-                  {data.application_status === 'Shortlisted' ? 'Shortlisted ✓' : 'Shortlist Candidate'}
+                  {data.application_status === 'Shortlisted' ? 'Shortlisted ✓' : data.application_status === 'Successful' ? 'Candidate Hired 🎉' : 'Shortlist Candidate'}
                 </button>
-                <button 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (onSendEmail) {
+
+                {userRole === 'hiring_manager' && data.application_status !== 'Unsuccessful' && data.application_status !== 'Successful' && !showRejectInput && !data.manager_notes && (
+                  <button 
+                    onClick={() => setShowRejectInput(true)}
+                    className="w-full bg-white hover:bg-red-50 text-red-600 border border-red-200 py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"
+                  >
+                    Recommend Rejection
+                  </button>
+                )}
+
+                {userRole === 'hiring_manager' && showRejectInput && (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                    <label className="block text-xs font-medium text-slate-700">Reason for rejection (Visible to HR)</label>
+                    <textarea 
+                      className="w-full text-sm border border-slate-300 rounded-md p-2 focus:ring-1 focus:ring-[#1d4ed8] focus:outline-none"
+                      rows={3}
+                      placeholder="e.g., Lacks required domain experience..."
+                      value={rejectNotes}
+                      onChange={(e) => setRejectNotes(e.target.value)}
+                    />
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={handleReject}
+                        disabled={isRejecting}
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-md text-sm font-medium transition-colors"
+                      >
+                        {isRejecting ? 'Saving...' : 'Save Note'}
+                      </button>
+                      <button 
+                        onClick={() => { setShowRejectInput(false); setRejectNotes(''); }}
+                        className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {onSendEmail && (
+                  <button 
+                    onClick={(e) => {
+                      e.preventDefault();
                       onSendEmail({
                         id: data.application_id,
                         name: candidate.name,
                         email: candidate.email,
                         jobTitle: job.job_title
                       });
-                    }
-                  }}
-                  className="w-full bg-[#0f172a] hover:bg-slate-800 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"
-                >
-                  Send Email
-                </button>
+                    }}
+                    className="w-full bg-[#0f172a] hover:bg-slate-800 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"
+                  >
+                    Send Email
+                  </button>
+                )}
                 <a 
                   href={data.resume_file || '#'}
                   target="_blank"
