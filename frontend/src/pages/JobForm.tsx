@@ -28,6 +28,12 @@ export default function JobForm() {
   const [idNo, setIdNo] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  
+  // New Demographic State
+  const [dob, setDob] = useState("");
+  const [gender, setGender] = useState("");
+  const [maritalStatus, setMaritalStatus] = useState("");
+  const [isMalaysianIC, setIsMalaysianIC] = useState(false);
   const [highestEducation, setHighestEducation] = useState("");
   const [yearsOfExperience, setYearsOfExperience] = useState<number | "">("");
   const [education, setEducation] = useState<any>(null);
@@ -54,6 +60,25 @@ export default function JobForm() {
   const removeOtherDoc = (indexToRemove: number) => {
     setOtherDocs(otherDocs.filter((_, index) => index !== indexToRemove));
   };
+
+  useEffect(() => {
+    const cleanId = idNo.replace(/\D/g, '');
+    if (cleanId.length === 12) {
+      const yy = cleanId.substring(0, 2);
+      const mm = cleanId.substring(2, 4);
+      const dd = cleanId.substring(4, 6);
+      const yearPrefix = parseInt(yy) > 50 ? '19' : '20';
+      const dateStr = `${yearPrefix}${yy}-${mm}-${dd}`;
+      
+      const dateObj = new Date(dateStr);
+      if (!isNaN(dateObj.getTime())) {
+        setDob(dateStr);
+        setIsMalaysianIC(true);
+        return;
+      }
+    }
+    setIsMalaysianIC(false);
+  }, [idNo]);
 
   useEffect(() => {
     const fetchJobData = async () => {
@@ -195,10 +220,26 @@ export default function JobForm() {
 
       if (existingCandidate) {
         candidateId = existingCandidate.candidate_id;
+        // Optionally update the existing candidate with new info if needed
+        await supabase.from('candidate').update({
+          id_no: idNo,
+          phone: phone,
+          dob: dob ? dob : null,
+          gender: gender,
+          marital_status: maritalStatus
+        }).eq('candidate_id', candidateId);
       } else {
         const { data: newCandidate, error: candidateError } = await supabase
           .from('candidate')
-          .insert({ name: fullName, id_no: idNo, email: email, phone: phone })
+          .insert({ 
+            name: fullName, 
+            id_no: idNo, 
+            email: email, 
+            phone: phone,
+            dob: dob ? dob : null,
+            gender: gender,
+            marital_status: maritalStatus
+          })
           .select()
           .single();
         if (candidateError) throw new Error("Candidate Error: " + candidateError.message);
@@ -610,6 +651,39 @@ export default function JobForm() {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Identification / Passport Number</label>
                   <input type="text" value={idNo} onChange={(e) => setIdNo(e.target.value)} placeholder="e.g., 020405-04-XXXX" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Date of Birth</label>
+                  <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} disabled={isMalaysianIC} className={`w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors ${isMalaysianIC ? 'opacity-70 cursor-not-allowed' : ''}`} />
+                  {isMalaysianIC && <p className="text-xs text-slate-500 mt-1 text-emerald-600 font-medium">✨ Auto-extracted from IC number.</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Gender</label>
+                  <div className="relative">
+                    <select value={gender} onChange={(e) => setGender(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors">
+                      <option value="" disabled>Select Gender</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-400">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Marital Status</label>
+                  <div className="relative">
+                    <select value={maritalStatus} onChange={(e) => setMaritalStatus(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors">
+                      <option value="" disabled>Select Status</option>
+                      <option value="Single">Single</option>
+                      <option value="Married">Married</option>
+                      <option value="Divorced">Divorced</option>
+                      <option value="Widowed">Widowed</option>
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-400">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Email Address</label>

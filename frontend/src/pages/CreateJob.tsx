@@ -27,6 +27,7 @@ export default function CreateJob() {
   const [minTotalExperience, setMinTotalExperience] = useState('');
   const [minRelevantExperience, setMinRelevantExperience] = useState('');
   const [educationLevel, setEducationLevel] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [acceptableDegrees, setAcceptableDegrees] = useState('');
   const [equivalentExperienceAccepted, setEquivalentExperienceAccepted] = useState(false);
   const [acceptPursuingEducation, setAcceptPursuingEducation] = useState(false);
@@ -113,10 +114,21 @@ export default function CreateJob() {
 
           if (job.job_requirement) {
             const reqs = job.job_requirement;
-            const tech = reqs.filter((r: any) => r.type_id === 1).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 1 }));
-            const soft = reqs.filter((r: any) => r.type_id === 2).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 2 }));
-            const domain = reqs.filter((r: any) => r.type_id === 3).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 3 }));
-            const degs = reqs.filter((r: any) => r.type_id === 4).map((r: any) => r.requirement_name).join(', ');
+            
+            // Helper to deduplicate by name
+            const uniqueByName = (arr: any[]) => {
+              const seen = new Set();
+              return arr.filter(item => {
+                if (seen.has(item.name.toLowerCase())) return false;
+                seen.add(item.name.toLowerCase());
+                return true;
+              });
+            };
+
+            const tech = uniqueByName(reqs.filter((r: any) => r.type_id === 1).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 1 })));
+            const soft = uniqueByName(reqs.filter((r: any) => r.type_id === 2).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 2 })));
+            const domain = uniqueByName(reqs.filter((r: any) => r.type_id === 3).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 3 })));
+            const degs = Array.from(new Set(reqs.filter((r: any) => r.type_id === 4).map((r: any) => r.requirement_name))).join(', ');
 
             if (tech.length > 0) setTechSkills(tech);
             if (soft.length > 0) setSoftSkills(soft);
@@ -216,6 +228,8 @@ export default function CreateJob() {
   };
 
   const handleSubmit = async (status: 'active' | 'draft') => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
@@ -229,6 +243,11 @@ export default function CreateJob() {
       let finalStatus = status;
       if (status === 'active' && userRole === 'hr_junior' && !selectedTemplate && !isEditing) {
         finalStatus = 'pending_approval';
+      }
+
+      if (minSalary && maxSalary && parseFloat(maxSalary) <= parseFloat(minSalary)) {
+        alert("Maximum Salary Budget must be greater than Minimum Salary Budget");
+        return;
       }
 
       // 1. Prepare Job Payload
@@ -265,13 +284,11 @@ export default function CreateJob() {
         if (error) throw error;
         newJobId = jobId;
 
-        // Delete old requirements before inserting new ones
-        const { error: delError } = await supabase
-          .from('job_requirement')
-          .delete()
-          .eq('job_id', jobId);
-        
-        if (delError) throw delError;
+        // Delete old requirements before inserting new ones (bypass RLS via backend)
+        const delRes = await fetch(`http://localhost:8000/api/job-requirements/${jobId}`, {
+          method: 'DELETE'
+        });
+        if (!delRes.ok) throw new Error("Failed to clear old requirements");
 
       } else {
         const { data: jobData, error: jobError } = await supabase
@@ -357,6 +374,8 @@ export default function CreateJob() {
     } catch (error: any) {
       console.error("Error creating job:", error);
       alert("Failed to create job: " + error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -568,6 +587,8 @@ export default function CreateJob() {
                       type="number"
                       value={minSalary}
                       onChange={(e) => setMinSalary(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                      min="0"
                       disabled={isFieldDisabled}
                       placeholder="Min"
                       className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -577,11 +598,16 @@ export default function CreateJob() {
                       type="number"
                       value={maxSalary}
                       onChange={(e) => setMaxSalary(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                      min="0"
                       disabled={isFieldDisabled}
                       placeholder="Max"
                       className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                     />
                   </div>
+                  {minSalary && maxSalary && parseFloat(maxSalary) <= parseFloat(minSalary) && (
+                    <p className="text-red-500 text-xs mt-2 font-medium">Maximum budget must be greater than minimum budget.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Application Deadline</label>
@@ -606,6 +632,8 @@ export default function CreateJob() {
                     type="number"
                     value={minTotalExperience}
                     onChange={(e) => setMinTotalExperience(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                    min="0"
                     disabled={isFieldDisabled}
                     placeholder="Min Years"
                     className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -617,6 +645,8 @@ export default function CreateJob() {
                     type="number"
                     value={minRelevantExperience}
                     onChange={(e) => setMinRelevantExperience(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                    min="0"
                     disabled={isFieldDisabled}
                     placeholder="Min Years"
                     className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -709,8 +739,7 @@ export default function CreateJob() {
                   <input
                     type="text"
                     value={acceptableDegrees}
-                    onChange={(e) => setAcceptableDegrees(e.target.value)}
-                    disabled={isEditing}
+                    onChange={(e) => setAcceptableDegrees(e.target.value.replace(/[0-9]/g, ''))}
                     placeholder="e.g., Computer Science, Business, Economics (comma separated)"
                     className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
@@ -834,16 +863,18 @@ export default function CreateJob() {
               <button
                 type="button"
                 onClick={() => handleSubmit('active')}
-                className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm"
+                disabled={isSubmitting}
+                className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isEditing ? 'Save & Publish' : 'Create & Generate Link'}
+                {isSubmitting ? 'Saving...' : (isEditing ? 'Save & Publish' : 'Create & Generate Link')}
               </button>
               <button
                 type="button"
                 onClick={() => handleSubmit('draft')}
-                className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm"
+                disabled={isSubmitting}
+                className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save as Draft
+                {isSubmitting ? 'Saving...' : 'Save as Draft'}
               </button>
               <button
                 type="button"

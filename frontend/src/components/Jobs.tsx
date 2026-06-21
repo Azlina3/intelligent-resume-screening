@@ -139,6 +139,68 @@ export default function Jobs({ onViewRanking, departmentFilterId }: JobsProps) {
     }
   };
 
+  const handleDownloadReport = async (jobId: string, jobTitle: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('application')
+        .select(`
+          application_id,
+          applied_at,
+          application_status,
+          candidate (
+            name,
+            email,
+            phone
+          ),
+          score (
+            total_score
+          )
+        `)
+        .eq('job_id', jobId)
+        .order('applied_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        alert("No applicants found for this position.");
+        return;
+      }
+
+      const headers = ["Candidate Name", "Email", "Phone", "Applied Date", "Match Score", "Final Status"];
+      
+      const rows = data.map((app: any) => {
+        const candidate = app.candidate || {};
+        const score = Array.isArray(app.score) ? app.score[0] : app.score;
+        const totalScore = score?.total_score ? Math.round(score.total_score) : 'N/A';
+        const appliedDate = new Date(app.applied_at).toLocaleDateString();
+
+        return [
+          `"${candidate.name || 'Unknown'}"`,
+          `"${candidate.email || 'N/A'}"`,
+          `"${candidate.phone || 'N/A'}"`,
+          `"${appliedDate}"`,
+          `"${totalScore}"`,
+          `"${app.application_status || 'Unknown'}"`
+        ].join(',');
+      });
+
+      const csvContent = [headers.join(','), ...rows].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `${jobTitle.replace(/\s+/g, '_')}_Hiring_Report.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+    } catch (err: any) {
+      console.error("Error generating report:", err);
+      alert("Failed to generate report: " + err.message);
+    }
+  };
+
   return (
     <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
       <div className="max-w-6xl mx-auto xl:mx-0">
@@ -320,18 +382,30 @@ export default function Jobs({ onViewRanking, departmentFilterId }: JobsProps) {
 
                       <div className="mt-auto">
                         {(!departmentFilterId || job.job_status !== 'draft') && (
-                          <button 
-                            className="w-full border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-lg font-medium text-sm transition-colors mb-3"
-                            onClick={() => {
-                              if (job.job_status === 'draft') {
-                                navigate(`/edit-job/${job.job_id}`);
-                              } else {
-                                alert("Historical records coming soon.");
-                              }
-                            }}
-                          >
-                            {job.job_status === 'draft' ? 'Edit Draft' : 'View Historical Records'}
-                          </button>
+                          job.job_status === 'draft' ? (
+                            <button 
+                              className="w-full border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-lg font-medium text-sm transition-colors mb-3"
+                              onClick={() => navigate(`/edit-job/${job.job_id}`)}
+                            >
+                              Edit Draft
+                            </button>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                              <button 
+                                className="border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-lg font-medium text-sm transition-colors"
+                                onClick={() => onViewRanking && onViewRanking(job.job_title)}
+                              >
+                                View Applicants
+                              </button>
+                              <button 
+                                className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white py-2.5 rounded-lg font-medium text-sm flex items-center justify-center transition-colors"
+                                onClick={() => handleDownloadReport(job.job_id, job.job_title)}
+                              >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                Report
+                              </button>
+                            </div>
+                          )
                         )}
                         <p className="text-xs text-slate-400 px-1">
                           {job.job_status === 'draft' ? 'Draft Record — Hidden from public.' : 'Archived Record — Locked for data integrity.'}

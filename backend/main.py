@@ -60,7 +60,7 @@ class CalculatedMetrics(BaseModel):
 class ExtractedResume(BaseModel):
     full_name: Optional[str] = Field(None, description="The candidate's full name.")
     email: Optional[str] = Field(None, description="Contact email address.")
-    phone: Optional[str] = Field(None, description="Primary telephone or contact number.")
+    phone: Optional[str] = Field(None, description="Primary telephone or contact number. Must be formatted as a single string of digits with a leading '+' (e.g., +60123456789), without spaces, dashes, or parentheses.")
     education: Education = Field(description="Details of the highest education achieved.")
     calculated_metrics: CalculatedMetrics = Field(description="Calculated Equivalent Professional Experience (EPE).")
     portfolio_links: List[str] = Field(default=[], description="Array of raw URLs like GitHub or LinkedIn profiles.")
@@ -97,6 +97,7 @@ async def parse_resume(file: UploadFile = File(...)):
         5. Languages: Extract known languages and proficiencies if listed.
         6. Equivalent Professional Experience (EPE): Calculate `total_epe_months`. Formal jobs/internships = 1x duration. Major academic projects = 0.7x duration. Hackathons = 0.5x duration (e.g., 1 month * 0.5 = 0.5 months). Sum these up in months.
         7. Education: Identify highest education. Provide `raw_title`. Map to `normalized_category` (must be exactly one of: 'No Requirement', 'SPM / O-Level', 'Diploma', 'Bachelor\\'s Degree', 'Master\\'s Degree', 'PhD'). Estimate `semantic_relevance_score` between 0.0 and 1.0 based on relevance to tech/software.
+        8. Phone Number: Standardize the extracted phone number format. Remove all spaces, dashes, and parentheses, and ensure it starts with a country code (e.g., +60123456789).
         """
         
         response = client.models.generate_content(
@@ -170,7 +171,8 @@ async def create_user(request: CreateUserRequest):
         user = supabase_admin.auth.admin.create_user({
             "email": request.email,
             "password": request.password,
-            "email_confirm": True
+            "email_confirm": True,
+            "user_metadata": {"display_name": request.name}
         })
         user_id = user.user.id
         
@@ -197,8 +199,11 @@ class UpdateUserRequest(BaseModel):
 @app.put("/api/admin/users/{user_id}")
 async def update_user(user_id: str, request: UpdateUserRequest):
     try:
-        # Update email in auth if it changed
-        supabase_admin.auth.admin.update_user_by_id(user_id, {"email": request.email})
+        # Update email and metadata in auth
+        supabase_admin.auth.admin.update_user_by_id(user_id, {
+            "email": request.email,
+            "user_metadata": {"display_name": request.name}
+        })
         
         # Update staff_user table
         staff_data = {
@@ -230,6 +235,22 @@ class ResetPasswordRequest(BaseModel):
 async def reset_password(user_id: str, request: ResetPasswordRequest):
     try:
         supabase_admin.auth.admin.update_user_by_id(user_id, {"password": request.new_password})
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/api/job-requirements/{job_id}")
+async def delete_job_requirements(job_id: int):
+    try:
+        supabase_admin.table("job_requirement").delete().eq("job_id", job_id).execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/api/template-requirements/{template_id}")
+async def delete_template_requirements(template_id: int):
+    try:
+        supabase_admin.table("job_template_requirement").delete().eq("template_id", template_id).execute()
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
