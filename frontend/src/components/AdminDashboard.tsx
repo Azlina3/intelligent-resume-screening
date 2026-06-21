@@ -124,6 +124,7 @@ export default function AdminDashboard({ userName }: { userName?: string }) {
       } else {
         // Create user
         if (!formData.password) throw new Error("Password is required for new users");
+        if (formData.password.length < 6) throw new Error("Password must be at least 6 characters.");
         const res = await fetch(`http://localhost:8000/api/admin/users`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -152,7 +153,10 @@ export default function AdminDashboard({ userName }: { userName?: string }) {
     if (!window.confirm('Are you sure you want to delete this user?')) return;
     try {
       const res = await fetch(`http://localhost:8000/api/admin/users/${userId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete user');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to delete user');
+      }
       fetchUsers();
     } catch (err: any) {
       alert(err.message);
@@ -161,6 +165,10 @@ export default function AdminDashboard({ userName }: { userName?: string }) {
 
   const handleResetPassword = async () => {
     if (!editingUser || !resetPassword) return;
+    if (resetPassword.length < 6) {
+      alert("Password must be at least 6 characters.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       const res = await fetch(`http://localhost:8000/api/admin/users/${editingUser.user_id}/reset-password`, {
@@ -168,7 +176,10 @@ export default function AdminDashboard({ userName }: { userName?: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ new_password: resetPassword })
       });
-      if (!res.ok) throw new Error('Failed to reset password');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to reset password');
+      }
       alert('Password reset successfully');
       setShowResetModal(false);
       setResetPassword('');
@@ -400,8 +411,8 @@ export default function AdminDashboard({ userName }: { userName?: string }) {
                       </div>
                       {!editingUser && (
                         <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password</label>
-                          <input type="text" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password <span className="text-xs font-normal text-slate-400 ml-1">(Min 6 chars)</span></label>
+                          <input type="text" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500" minLength={6} />
                         </div>
                       )}
                       <div>
@@ -441,8 +452,8 @@ export default function AdminDashboard({ userName }: { userName?: string }) {
                     <div className="p-6 space-y-4">
                       <p className="text-sm text-slate-600">Enter a new temporary password for <strong>{editingUser?.name}</strong>.</p>
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
-                        <input type="text" value={resetPassword} onChange={e => setResetPassword(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+                        <label className="block text-sm font-medium text-slate-700 mb-1">New Password <span className="text-xs font-normal text-slate-400 ml-1">(Min 6 chars)</span></label>
+                        <input type="text" value={resetPassword} onChange={e => setResetPassword(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500" minLength={6} />
                       </div>
                     </div>
                     <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">

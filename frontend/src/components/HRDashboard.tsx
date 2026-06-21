@@ -8,6 +8,7 @@ import Ranking from './Ranking';
 import CandidateDetails from './CandidateDetails';
 import EmailTemplates from '../pages/EmailTemplates';
 import Templates from './Templates';
+import { formatTimeAgo, getActionTypeColor } from '../utils/dateUtils';
 
 // Icon components
 const BriefcaseIcon = () => (
@@ -90,6 +91,7 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
 
   const [upcomingInterviews, setUpcomingInterviews] = useState<any[]>([]);
   const [actionItems, setActionItems] = useState<any[]>([]);
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
 
   useEffect(() => {
     if (currentView === 'dashboard') {
@@ -184,6 +186,19 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
           .select('job_id, job_title')
           .eq('job_status', 'draft');
         setActionItems(draftJobs || []);
+      }
+
+      // 6. Fetch Recent Activities
+      const { data: activitiesData, error: activitiesError } = await supabase
+        .from('activity_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (activitiesError) {
+        console.error("Error fetching activities:", activitiesError);
+      } else {
+        setRecentActivities(activitiesData || []);
       }
 
     } catch (err) {
@@ -318,7 +333,11 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
             </div>
             <div className="text-[38px] font-serif text-[#1a56db] mb-5 leading-none">{dashboardStats.activePostings}</div>
             <div className="mt-auto pt-4 border-t border-slate-50/0">
-              <a href="#" className="text-[#1a56db] text-sm font-medium hover:underline flex items-center">
+              <a 
+                href="#" 
+                onClick={(e) => { e.preventDefault(); setCurrentView('jobs'); }}
+                className="text-[#1a56db] text-sm font-medium hover:underline flex items-center"
+              >
                 Manage jobs <span className="ml-1 text-lg leading-none">→</span>
               </a>
             </div>
@@ -488,57 +507,24 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
               <h3 className="text-lg font-serif font-bold text-slate-800 mb-8">Recent Activity</h3>
               <div className="space-y-7 border-l-2 border-slate-100 ml-2 pl-6">
 
-                <div className="relative">
-                  <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-blue-500 ring-4 ring-white"></div>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-semibold text-slate-800 text-[14px]">New application received</div>
-                      <div className="text-slate-500 text-[13px] mt-0.5">Senior Frontend Developer</div>
+                {recentActivities.length === 0 ? (
+                  <p className="text-slate-500 text-sm italic">No recent activity found.</p>
+                ) : (
+                  recentActivities.map((activity, index) => (
+                    <div key={activity.log_id || index} className="relative">
+                      <div className={`absolute -left-[31px] top-1.5 w-3 h-3 rounded-full ${getActionTypeColor(activity.action_type)} ring-4 ring-white`}></div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-slate-800 text-[14px]">{activity.action_headline}</div>
+                          <div className="text-slate-500 text-[13px] mt-0.5">{activity.action_detail}</div>
+                        </div>
+                        <div className="text-slate-400 text-[12px] flex items-center mt-0.5 whitespace-nowrap ml-4">
+                          <span className="mr-1">🕒</span> {formatTimeAgo(activity.created_at)}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-slate-400 text-[12px] flex items-center mt-0.5">
-                      <span className="mr-1">🕒</span> 2 hours ago
-                    </div>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-white"></div>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-semibold text-slate-800 text-[14px]">Candidate shortlisted</div>
-                      <div className="text-slate-500 text-[13px] mt-0.5">Product Manager</div>
-                    </div>
-                    <div className="text-slate-400 text-[12px] flex items-center mt-0.5">
-                      <span className="mr-1">🕒</span> 5 hours ago
-                    </div>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-white"></div>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-semibold text-slate-800 text-[14px]">Interview scheduled</div>
-                      <div className="text-slate-500 text-[13px] mt-0.5">UX Designer</div>
-                    </div>
-                    <div className="text-slate-400 text-[12px] flex items-center mt-0.5">
-                      <span className="mr-1">🕒</span> 1 day ago
-                    </div>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-blue-500 ring-4 ring-white"></div>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-semibold text-slate-800 text-[14px]">New application received</div>
-                      <div className="text-slate-500 text-[13px] mt-0.5">Backend Engineer</div>
-                    </div>
-                    <div className="text-slate-400 text-[12px] flex items-center mt-0.5">
-                      <span className="mr-1">🕒</span> 1 day ago
-                    </div>
-                  </div>
-                </div>
+                  ))
+                )}
 
               </div>
             </section>

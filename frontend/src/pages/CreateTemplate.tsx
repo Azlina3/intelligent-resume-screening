@@ -36,6 +36,7 @@ export default function CreateTemplate() {
   const [equivalentExperienceAccepted, setEquivalentExperienceAccepted] = useState(false);
   const [acceptPursuingEducation, setAcceptPursuingEducation] = useState(false);
   const [strictEducationMatch, setStrictEducationMatch] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Core Skill Requirements State (3 Distinct Cards)
   const [techSkills, setTechSkills] = useState([{ name: '', proficiency: 'intermediate', priority: 'Mandatory', type_id: 1 }]);
@@ -111,10 +112,21 @@ export default function CreateTemplate() {
 
           if (temp.job_template_requirement) {
             const reqs = temp.job_template_requirement;
-            const tech = reqs.filter((r: any) => r.type_id === 1).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 1 }));
-            const soft = reqs.filter((r: any) => r.type_id === 2).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 2 }));
-            const domain = reqs.filter((r: any) => r.type_id === 3).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 3 }));
-            const degs = reqs.filter((r: any) => r.type_id === 4).map((r: any) => r.requirement_name).join(', ');
+            
+            // Helper to deduplicate by name
+            const uniqueByName = (arr: any[]) => {
+              const seen = new Set();
+              return arr.filter(item => {
+                if (seen.has(item.name.toLowerCase())) return false;
+                seen.add(item.name.toLowerCase());
+                return true;
+              });
+            };
+
+            const tech = uniqueByName(reqs.filter((r: any) => r.type_id === 1).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 1 })));
+            const soft = uniqueByName(reqs.filter((r: any) => r.type_id === 2).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 2 })));
+            const domain = uniqueByName(reqs.filter((r: any) => r.type_id === 3).map((r: any) => ({ name: r.requirement_name, proficiency: r.proficiency_level, priority: r.is_mandatory ? 'Mandatory' : 'Preferred', type_id: 3 })));
+            const degs = Array.from(new Set(reqs.filter((r: any) => r.type_id === 4).map((r: any) => r.requirement_name))).join(', ');
 
             if (tech.length > 0) setTechSkills(tech);
             if (soft.length > 0) setSoftSkills(soft);
@@ -164,6 +176,8 @@ export default function CreateTemplate() {
   };
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
@@ -175,6 +189,11 @@ export default function CreateTemplate() {
       if (!templateName || !jobTitle) {
          alert('Template Name and Job Title are required.');
          return;
+      }
+
+      if (minSalary && maxSalary && parseFloat(maxSalary) <= parseFloat(minSalary)) {
+        alert("Maximum Salary Budget must be greater than Minimum Salary Budget");
+        return;
       }
 
       const templatePayload = {
@@ -246,7 +265,10 @@ export default function CreateTemplate() {
       }
 
       if (isEditing) {
-         await supabase.from('job_template_requirement').delete().eq('template_id', currentTemplateId);
+         const delRes = await fetch(`http://localhost:8000/api/template-requirements/${currentTemplateId}`, {
+           method: 'DELETE'
+         });
+         if (!delRes.ok) throw new Error("Failed to clear old template requirements");
       }
 
       if (allReqs.length > 0) {
@@ -260,7 +282,9 @@ export default function CreateTemplate() {
       navigate('/dashboard'); // or appropriate route
     } catch (error: any) {
       console.error("Error creating job:", error);
-      alert("Failed to create job: " + error.message);
+      alert("Failed to create template: " + error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -462,6 +486,8 @@ export default function CreateTemplate() {
                       type="number"
                       value={minSalary}
                       onChange={(e) => setMinSalary(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                      min="0"
                       placeholder="Min"
                       className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
                     />
@@ -470,10 +496,15 @@ export default function CreateTemplate() {
                       type="number"
                       value={maxSalary}
                       onChange={(e) => setMaxSalary(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                      min="0"
                       placeholder="Max"
                       className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors"
                     />
                   </div>
+                  {minSalary && maxSalary && parseFloat(maxSalary) <= parseFloat(minSalary) && (
+                    <p className="text-red-500 text-xs mt-2 font-medium">Maximum budget must be greater than minimum budget.</p>
+                  )}
                 </div>
               </div>
             </section>
@@ -488,6 +519,8 @@ export default function CreateTemplate() {
                     type="number"
                     value={minTotalExperience}
                     onChange={(e) => setMinTotalExperience(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                    min="0"
                     
                     placeholder="Min Years"
                     className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
@@ -499,6 +532,8 @@ export default function CreateTemplate() {
                     type="number"
                     value={minRelevantExperience}
                     onChange={(e) => setMinRelevantExperience(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                    min="0"
                     
                     placeholder="Min Years"
                     className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
@@ -591,8 +626,7 @@ export default function CreateTemplate() {
                   <input
                     type="text"
                     value={acceptableDegrees}
-                    onChange={(e) => setAcceptableDegrees(e.target.value)}
-                    disabled={isEditing}
+                    onChange={(e) => setAcceptableDegrees(e.target.value.replace(/[0-9]/g, ''))}
                     placeholder="e.g., Computer Science, Business, Economics (comma separated)"
                     className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors "
                   />
@@ -716,9 +750,10 @@ export default function CreateTemplate() {
               <button
                 type="button"
                 onClick={() => handleSubmit()}
-                className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm"
+                disabled={isSubmitting}
+                className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isEditing ? 'Save Template' : 'Create Template'}
+                {isSubmitting ? 'Saving...' : (isEditing ? 'Save Template' : 'Create Template')}
               </button>
             </div>
             <button

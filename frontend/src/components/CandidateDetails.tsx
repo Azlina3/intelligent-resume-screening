@@ -223,6 +223,28 @@ export default function CandidateDetails({
   const candidate = data.candidate || {};
   const job = data.job || {};
 
+  let currentAge = 'N/A';
+  if (candidate.dob) {
+    const birthDate = new Date(candidate.dob);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+    }
+    currentAge = `${age} years old`;
+  }
+
+  let expectedSalaryAlert = null;
+  if (data.expected_salary && job.max_salary) {
+    const diff = Number(data.expected_salary) - Number(job.max_salary);
+    if (diff > 1000) {
+      expectedSalaryAlert = 'danger';
+    } else if (diff > 0) {
+      expectedSalaryAlert = 'warning';
+    }
+  }
+
   return (
     <main className="flex-1 p-10 px-12 overflow-y-auto bg-[#fafafa]">
       <div className="max-w-7xl mx-auto xl:mx-0 w-full">
@@ -250,6 +272,11 @@ export default function CandidateDetails({
               }`}>
                 {data.application_status || 'Unknown Status'}
               </span>
+              {(job.job_status === 'closed' || job.job_status === 'archived') && (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-slate-100 text-slate-500 border-2 border-slate-200">
+                  Historical Record
+                </span>
+              )}
             </div>
             <p className="text-slate-500 text-lg">{job.job_title || 'Unknown Position'}</p>
           </div>
@@ -419,11 +446,20 @@ export default function CandidateDetails({
                     {data.current_salary ? `RM ${Number(data.current_salary).toLocaleString()}` : 'Not provided'}
                   </div>
                 </div>
-                <div className="p-5 border border-slate-100 rounded-lg bg-slate-50/50">
-                  <div className="text-sm font-medium text-slate-500 mb-1">Expected Salary</div>
-                  <div className="text-lg font-bold text-slate-800">
+                <div className={`p-5 border rounded-lg ${expectedSalaryAlert === 'danger' ? 'bg-red-50/50 border-red-200' : expectedSalaryAlert === 'warning' ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50/50 border-slate-100'}`}>
+                  <div className="text-sm font-medium text-slate-500 mb-1 flex items-center justify-between">
+                    <span>Expected Salary</span>
+                    {expectedSalaryAlert === 'danger' && <span className="text-[10px] px-2 py-0.5 rounded bg-red-100 text-red-700 font-bold ml-2">Exceeds Budget (&gt;1k)</span>}
+                    {expectedSalaryAlert === 'warning' && <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-bold ml-2">Exceeds Budget</span>}
+                  </div>
+                  <div className={`text-lg font-bold ${expectedSalaryAlert === 'danger' ? 'text-red-700' : expectedSalaryAlert === 'warning' ? 'text-amber-700' : 'text-slate-800'}`}>
                     {data.expected_salary ? `RM ${Number(data.expected_salary).toLocaleString()}` : 'Not provided'}
                   </div>
+                  {(expectedSalaryAlert === 'danger' || expectedSalaryAlert === 'warning') && job.max_salary && (
+                    <div className="text-xs mt-1 text-slate-500">
+                      Budget max: RM {Number(job.max_salary).toLocaleString()}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -485,6 +521,36 @@ export default function CandidateDetails({
               </div>
             </div>
 
+            {/* Demographics Card */}
+            <div className="bg-white rounded-xl border border-slate-200 p-7 shadow-sm text-left">
+              <h3 className="text-lg font-serif font-bold text-[#0f172a] mb-6">Personal Details</h3>
+              <div className="space-y-5">
+                <div className="flex items-start">
+                  <svg className="w-5 h-5 text-slate-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                  <div className="ml-4">
+                    <div className="text-xs text-slate-400 font-medium mb-0.5">Date of Birth & Age</div>
+                    <div className="text-sm font-medium text-slate-800">
+                      {candidate.dob ? `${new Date(candidate.dob).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} (${currentAge})` : 'N/A'}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-start">
+                  <svg className="w-5 h-5 text-slate-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                  <div className="ml-4">
+                    <div className="text-xs text-slate-400 font-medium mb-0.5">Gender</div>
+                    <div className="text-sm font-medium text-slate-800">{candidate.gender || 'N/A'}</div>
+                  </div>
+                </div>
+                <div className="flex items-start">
+                  <svg className="w-5 h-5 text-slate-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+                  <div className="ml-4">
+                    <div className="text-xs text-slate-400 font-medium mb-0.5">Marital Status</div>
+                    <div className="text-sm font-medium text-slate-800">{candidate.marital_status || 'N/A'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Qualifications Card */}
             <div className="bg-white rounded-xl border border-slate-200 p-7 shadow-sm text-left">
               <h3 className="text-lg font-serif font-bold text-[#0f172a] mb-6">Qualifications</h3>
@@ -526,7 +592,7 @@ export default function CandidateDetails({
                 <button 
                   className={`w-full ${data.application_status === 'Shortlisted' ? 'bg-green-600 border-green-600 cursor-default' : 'bg-[#1d4ed8] hover:bg-[#1e40af] border-[#1d4ed8]'} disabled:opacity-75 disabled:cursor-not-allowed text-white border py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center`}
                   onClick={async () => {
-                    if (data.application_status === 'Shortlisted') return;
+                    if (data.application_status === 'Shortlisted' || job.job_status === 'closed' || job.job_status === 'archived') return;
                     try {
                       const { error } = await supabase
                         .from('application')
@@ -539,12 +605,12 @@ export default function CandidateDetails({
                       alert("Failed to shortlist candidate: " + err.message);
                     }
                   }}
-                  disabled={data.application_status === 'Unsuccessful' || data.application_status === 'Shortlisted' || data.application_status === 'Successful'}
+                  disabled={job.job_status === 'closed' || job.job_status === 'archived' || data.application_status === 'Unsuccessful' || data.application_status === 'Shortlisted' || data.application_status === 'Successful'}
                 >
                   {data.application_status === 'Shortlisted' ? 'Shortlisted ✓' : data.application_status === 'Successful' ? 'Candidate Hired 🎉' : 'Shortlist Candidate'}
                 </button>
 
-                {userRole === 'hiring_manager' && data.application_status !== 'Unsuccessful' && data.application_status !== 'Successful' && !showRejectInput && !data.manager_notes && (
+                {userRole === 'hiring_manager' && job.job_status !== 'closed' && job.job_status !== 'archived' && data.application_status !== 'Unsuccessful' && data.application_status !== 'Successful' && !showRejectInput && !data.manager_notes && (
                   <button 
                     onClick={() => setShowRejectInput(true)}
                     className="w-full bg-white hover:bg-red-50 text-red-600 border border-red-200 py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"

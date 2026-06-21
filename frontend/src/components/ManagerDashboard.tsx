@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../config/supabaseClient';
 import ProfileSettings from './ProfileSettings';
@@ -6,6 +6,7 @@ import Jobs from './Jobs';
 import Candidates from './Candidates';
 import Ranking from './Ranking';
 import CandidateDetails from './CandidateDetails';
+import { formatTimeAgo, getActionTypeColor } from '../utils/dateUtils';
 
 // Icon components
 const BriefcaseIcon = () => (
@@ -58,6 +59,32 @@ export default function ManagerDashboard({ userName, departmentId, departmentNam
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
   const [selectedJobForRanking, setSelectedJobForRanking] = useState<string>('All Positions');
   const [highlightedCandidateId, setHighlightedCandidateId] = useState<string | null>(null);
+  const [departmentActivities, setDepartmentActivities] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (currentView === 'dashboard' && departmentId) {
+      fetchDepartmentActivities();
+    }
+  }, [currentView, departmentId]);
+
+  const fetchDepartmentActivities = async () => {
+    try {
+      const { data: activitiesData, error: activitiesError } = await supabase
+        .from('activity_log')
+        .select('*')
+        .eq('department_id', departmentId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (activitiesError) {
+        console.error("Error fetching department activities:", activitiesError);
+      } else {
+        setDepartmentActivities(activitiesData || []);
+      }
+    } catch (err) {
+      console.error("Error fetching department activities:", err);
+    }
+  };
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -309,44 +336,26 @@ export default function ManagerDashboard({ userName, departmentId, departmentNam
               
               <div className="space-y-7 border-l-2 border-slate-100 ml-2 pl-6">
                 
-                {/* Activity 1 */}
-                <div className="relative">
-                  <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-blue-500 ring-4 ring-white"></div>
-                  <div className="flex flex-col">
-                    <div className="font-semibold text-slate-800 text-[14px] leading-snug">
-                      Aida forwarded 3 new candidate profiles for Software Engineer
+                {departmentActivities.length === 0 ? (
+                  <p className="text-slate-500 text-sm italic">No recent activity for your department.</p>
+                ) : (
+                  departmentActivities.map((activity, index) => (
+                    <div key={activity.log_id || index} className="relative">
+                      <div className={`absolute -left-[31px] top-1.5 w-3 h-3 rounded-full ${getActionTypeColor(activity.action_type)} ring-4 ring-white`}></div>
+                      <div className="flex flex-col">
+                        <div className="font-semibold text-slate-800 text-[14px] leading-snug">
+                          {activity.action_headline}
+                        </div>
+                        <div className="text-slate-500 text-[13px] mt-0.5">
+                          {activity.action_detail}
+                        </div>
+                        <div className="text-slate-400 text-[12px] flex items-center mt-1.5">
+                          <span className="mr-1">🕒</span> {formatTimeAgo(activity.created_at)}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-slate-400 text-[12px] flex items-center mt-1.5">
-                      <span className="mr-1">🕒</span> 3 hours ago
-                    </div>
-                  </div>
-                </div>
-
-                {/* Activity 2 */}
-                <div className="relative">
-                  <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-white"></div>
-                  <div className="flex flex-col">
-                    <div className="font-semibold text-slate-800 text-[14px] leading-snug">
-                      System completed parsed ranking execution for DevOps role
-                    </div>
-                    <div className="text-slate-400 text-[12px] flex items-center mt-1.5">
-                      <span className="mr-1">🕒</span> Yesterday
-                    </div>
-                  </div>
-                </div>
-
-                {/* Activity 3 */}
-                <div className="relative">
-                  <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-purple-500 ring-4 ring-white"></div>
-                  <div className="flex flex-col">
-                    <div className="font-semibold text-slate-800 text-[14px] leading-snug">
-                      Interview feedback submitted for candidate Joshua
-                    </div>
-                    <div className="text-slate-400 text-[12px] flex items-center mt-1.5">
-                      <span className="mr-1">🕒</span> 2 days ago
-                    </div>
-                  </div>
-                </div>
+                  ))
+                )}
                 
               </div>
             </section>

@@ -97,7 +97,7 @@ export default function Login() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Password</label>
+            <label className="form-label">Password <span className="text-xs font-normal text-slate-400 ml-1">(Min 6 chars)</span></label>
             <div className="input-wrapper">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -106,6 +106,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                minLength={6}
               />
               <button
                 type="button"
@@ -116,6 +117,11 @@ export default function Login() {
                 {showPassword ? <EyeOffIcon /> : <EyeIcon />}
               </button>
             </div>
+            {!email.toLowerCase().includes('admin') && (
+              <p className="text-xs text-blue-600 italic mt-2 text-right">
+                Forgot password? Contact your IT admin.
+              </p>
+            )}
           </div>
 
           <button type="submit" className="auth-button" disabled={loading}>
@@ -123,9 +129,6 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="auth-footer">
-          Don't have an account? <a href="/register" className="auth-link">Register</a>
-        </div>
       </div>
 
       <div className="auth-brand-footer">
