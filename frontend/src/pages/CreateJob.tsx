@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { logActivity } from '../utils/activityLogger';
 
 export default function CreateJob() {
   const navigate = useNavigate();
@@ -240,8 +241,20 @@ export default function CreateJob() {
       }
 
       // Enforce Junior HR custom job rule
+      // Fetch role directly to be absolutely sure we have it
+      let currentRole = userRole;
+      if (!currentRole) {
+        const { data: staffData } = await supabase
+          .from('staff_user')
+          .select('role')
+          .eq('email', user.email)
+          .single();
+        currentRole = staffData?.role || user.user_metadata?.role;
+      }
+
       let finalStatus = status;
-      if (status === 'active' && userRole === 'hr_junior' && !selectedTemplate && !isEditing) {
+      // If it's a junior HR publishing a job without a template currently selected
+      if (status === 'active' && currentRole === 'hr_junior' && !selectedTemplate) {
         finalStatus = 'pending_approval';
       }
 
@@ -369,6 +382,12 @@ export default function CreateJob() {
            alert(`Job successfully ${isEditing ? 'updated' : 'created'} as ${finalStatus}!\n\nApplication Link (copy this):\n${appLink}`);
         }
       }
+
+      await logActivity(
+        isEditing ? 'Job Post Updated' : 'New Job Post Created',
+        `Job "${jobTitle}" was successfully ${isEditing ? 'updated' : 'created'} with status: ${finalStatus}.`,
+        finalStatus === 'pending_approval' ? 'warning' : 'success'
+      );
 
       navigate('/dashboard'); // or appropriate route
     } catch (error: any) {

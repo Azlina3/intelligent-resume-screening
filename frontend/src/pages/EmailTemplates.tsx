@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { supabase } from '../supabaseClient';
+import { logActivity } from '../utils/activityLogger';
 import DatePicker from '../components/DatePicker';
 import TimePicker from '../components/TimePicker';
 
@@ -212,6 +213,12 @@ export default function EmailTemplates({ candidateData }: { candidateData?: any 
         .eq('application_id', candidateData.id);
         
       if (updateError) throw updateError;
+      
+      await logActivity(
+        `Email Sent to ${candidateData.name}`,
+        `Template: ${selectedTemplate.title} | New Status: ${newStatus}`,
+        'success'
+      );
       
       alert(`Email marked as sent and status updated to '${newStatus}'!`);
     } catch (error: any) {

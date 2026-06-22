@@ -178,7 +178,7 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
         const { data: pendingJobs } = await supabase
           .from('job')
           .select('job_id, job_title')
-          .eq('job_status', 'pending approval');
+          .eq('job_status', 'pending_approval');
         setActionItems(pendingJobs || []);
       } else if (userRole === 'hr_junior') {
         const { data: draftJobs } = await supabase
@@ -533,10 +533,13 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
         </div>
       </main>
       ) : currentView === 'jobs' ? (
-        <Jobs onViewRanking={(jobTitle) => { 
-          setSelectedJobForRanking(jobTitle || 'All Positions'); 
-          setCurrentView('ranking'); 
-        }} />
+        <Jobs 
+          userRole={userRole}
+          onViewRanking={(jobTitle) => { 
+            setSelectedJobForRanking(jobTitle || 'All Positions'); 
+            setCurrentView('ranking'); 
+          }} 
+        />
       ) : currentView === 'templates' ? (
         <Templates userRole={userRole} />
       ) : currentView === 'ranking' ? (
