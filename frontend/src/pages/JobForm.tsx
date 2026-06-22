@@ -415,7 +415,12 @@ export default function JobForm() {
         if (dataError) console.warn("Candidate Data Error:", dataError.message);
       }
 
-      alert(`Application submitted successfully!\n\nYour Application Reference is: ${appReference}\nPlease save this code to track your application status later.`);
+      try {
+        await navigator.clipboard.writeText(appReference);
+        alert(`Application submitted successfully!\n\nYour Application Reference is: ${appReference}\n(This code has been auto-copied to your clipboard. Please save it to track your application status later.)`);
+      } catch (err) {
+        alert(`Application submitted successfully!\n\nYour Application Reference is: ${appReference}\nPlease save this code to track your application status later.`);
+      }
       navigate('/track-status');
 
     } catch (err: any) {

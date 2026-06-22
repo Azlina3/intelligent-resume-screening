@@ -654,7 +654,8 @@ export default function CandidateDetails({
                         id: data.application_id,
                         name: candidate.name,
                         email: candidate.email,
-                        jobTitle: job.job_title
+                        jobTitle: job.job_title,
+                        application_reference: data.application_reference
                       });
                     }}
                     className="w-full bg-[#0f172a] hover:bg-slate-800 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"

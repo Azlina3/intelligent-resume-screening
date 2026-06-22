@@ -57,6 +57,8 @@ Thank you for your application for the [Position] role at TalentScreen Sdn. Bhd.
 
 We wanted to provide you with a brief status update. Your application is currently under active review by our hiring team. Given the volume of strong applications received, we appreciate your continued patience throughout this process.
 
+Your Application Reference Code is: [Reference Code]
+
 You can check the real-time status of your application here: [Status Link]
 
 If you have any questions in the meantime, please feel free to reply to this email.
@@ -117,6 +119,7 @@ export default function EmailTemplates({ candidateData }: { candidateData?: any 
         }
         if (selectedTemplateId === 'follow-up') {
           if (part === '[Status Link]') displayValue = 'https://talentscreen.app/status';
+          if (part === '[Reference Code]') displayValue = candidateData?.application_reference || '[Reference Code]';
         }
         if (part === '[Candidate Name]') displayValue = candidateData?.name || '[Candidate Name]';
         if (part === '[Position]') displayValue = candidateData?.jobTitle || '[Position]';
@@ -151,6 +154,7 @@ export default function EmailTemplates({ candidateData }: { candidateData?: any 
     }
     if (selectedTemplateId === 'follow-up') {
       body = body.replace(/\[Status Link\]/g, 'https://talentscreen.app/status');
+      body = body.replace(/\[Reference Code\]/g, candidateData?.application_reference || '[Reference Code]');
     }
     return body;
   };
