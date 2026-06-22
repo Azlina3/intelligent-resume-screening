@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { logActivity } from '../utils/activityLogger';
 
 export default function CreateTemplate() {
   const navigate = useNavigate();
@@ -277,6 +278,12 @@ export default function CreateTemplate() {
           .insert(allReqs);
         if (reqError) throw reqError;
       }
+
+      await logActivity(
+        isEditing ? 'Job Template Updated' : 'New Job Template Created',
+        `Template "${templateName}" was successfully ${isEditing ? 'updated' : 'created'}.`,
+        'success'
+      );
 
       alert(`Template successfully ${isEditing ? 'updated' : 'created'}!`);
       navigate('/dashboard'); // or appropriate route

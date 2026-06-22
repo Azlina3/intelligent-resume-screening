@@ -240,7 +240,7 @@ async def reset_password(user_id: str, request: ResetPasswordRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.delete("/api/job-requirements/{job_id}")
-async def delete_job_requirements(job_id: int):
+async def delete_job_requirements(job_id: str):
     try:
         supabase_admin.table("job_requirement").delete().eq("job_id", job_id).execute()
         return {"status": "success"}
@@ -248,7 +248,7 @@ async def delete_job_requirements(job_id: int):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.delete("/api/template-requirements/{template_id}")
-async def delete_template_requirements(template_id: int):
+async def delete_template_requirements(template_id: str):
     try:
         supabase_admin.table("job_template_requirement").delete().eq("template_id", template_id).execute()
         return {"status": "success"}

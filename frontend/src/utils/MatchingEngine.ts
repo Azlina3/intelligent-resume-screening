@@ -68,9 +68,29 @@ export function isSkillMatch(
     // Handle 'problem solver' vs 'problem solving'
     if (req.includes('problem') && req.includes('solv') && cand.includes('problem') && cand.includes('solv')) return true;
     
-    // Check if one is a substantial substring of the other (e.g. 'react' vs 'react.js')
-    if (req.length > 3 && cand.length > 3) {
-      if (req.includes(cand) || cand.includes(req)) return true;
+    // Token overlap check for robust fuzzy matching
+    // (e.g., "SQL for data query" vs "sql", "procurement planning" vs "procurement management")
+    if (req.length >= 2 && cand.length >= 2) {
+      if (req === cand || cand === req) return true;
+      
+      // Tokenize by spaces and special characters
+      const reqTokens = req.split(/[\s\-]+/).filter(t => t.length > 2);
+      const candTokens = cand.split(/[\s\-]+/).filter(t => t.length > 2);
+      
+      let matchCount = 0;
+      for (const t of reqTokens) {
+        if (candTokens.includes(t)) matchCount++;
+      }
+      
+      if (reqTokens.length > 0 && candTokens.length > 0) {
+        const overlapRatio = matchCount / Math.min(reqTokens.length, candTokens.length);
+        if (overlapRatio >= 0.5) return true;
+      }
+      
+      // Keep direct substring match as a fallback for cases where tokens don't split well
+      if (req.length >= 3 && cand.length >= 3) {
+        if (req.includes(cand) || cand.includes(req)) return true;
+      }
     }
     
     // Handle 'communication' vs language proficiency
