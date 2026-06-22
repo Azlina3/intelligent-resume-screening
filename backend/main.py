@@ -127,7 +127,7 @@ class EmbedRequest(BaseModel):
 async def embed_skills(request: EmbedRequest):
     """
     Receives a list of skill strings and returns their 768-dimensional float arrays
-    using Google's text-embedding-004 model.
+    using Google's text-embedding-001 model.
     """
     try:
         client = genai.Client()
