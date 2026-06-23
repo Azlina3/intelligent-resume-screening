@@ -21,6 +21,7 @@ function App() {
         <Route path="/apply/:jobId" element={<JobForm />} />
         <Route path="/create-job" element={<CreateJob />} />
         <Route path="/edit-job/:jobId" element={<CreateJob />} />
+        <Route path="/view-job/:jobId" element={<CreateJob />} />
         <Route path="/create-template" element={<CreateTemplate />} />
         <Route path="/edit-template/:templateId" element={<CreateTemplate />} />
         <Route path="/track-status" element={<TrackStatus />} />

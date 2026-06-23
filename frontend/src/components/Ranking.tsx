@@ -68,7 +68,7 @@ export default function Ranking({
             application_id,
             application_status,
             candidate:candidate_id ( name ),
-            job:job_id!inner ( job_title, department_id )
+            job:job_id!inner ( job_id, job_title, department_id )
           ),
           score_breakdown ( criteria, score_value )
         `);
@@ -85,13 +85,24 @@ export default function Ranking({
         const formattedData: RankingData[] = data.map((item: any, index: number) => {
           const breakdowns = item.score_breakdown || [];
           
-          const mandatory = Number(breakdowns.find((b: any) => b.criteria === 'Mandatory Requirements')?.score_value || 0);
-          const optional = Number(breakdowns.find((b: any) => b.criteria === 'Optional Requirements')?.score_value || 0);
+          const skillsBreakdowns = breakdowns.filter((b: any) => 
+            b.criteria !== 'Education Match' && b.criteria !== 'Experience Match' && b.criteria !== 'Mandatory Requirements' && b.criteria !== 'Optional Requirements'
+          );
+          
+          let skillsMatchPoints = 0;
+          if (skillsBreakdowns.length > 0) {
+            skillsMatchPoints = skillsBreakdowns.reduce((sum: number, b: any) => sum + Number(b.score_value || 0), 0);
+          } else {
+            const mandatory = Number(breakdowns.find((b: any) => b.criteria === 'Mandatory Requirements')?.score_value || 0);
+            const optional = Number(breakdowns.find((b: any) => b.criteria === 'Optional Requirements')?.score_value || 0);
+            skillsMatchPoints = mandatory + optional;
+          }
+
           const rawEdu = Number(breakdowns.find((b: any) => b.criteria === 'Education Match')?.score_value || 0);
           const rawExp = Number(breakdowns.find((b: any) => b.criteria === 'Experience Match')?.score_value || 0);
           
           const totalScore = item.total_score || 0;
-          const candidatePointsEarned = mandatory + optional + rawEdu + rawExp;
+          const candidatePointsEarned = skillsMatchPoints + rawEdu + rawExp;
           
           let maxPossiblePoints = 100;
           if (totalScore > 0 && candidatePointsEarned > 0) {
@@ -100,14 +111,14 @@ export default function Ranking({
           
           const maxSkillsPoints = Math.max(1, maxPossiblePoints - 20); // edu 10 + exp 10
           
-          const skillsMatch = Math.min(100, Math.round(((mandatory + optional) / maxSkillsPoints) * 100));
+          const skillsMatch = Math.min(100, Math.round((skillsMatchPoints / maxSkillsPoints) * 100));
           const educationMatch = Math.min(100, Math.round((rawEdu / 10) * 100));
           const experienceMatch = Math.min(100, Math.round((rawExp / 10) * 100));
 
           return {
             id: item.application?.application_id || item.score_id,
             name: item.application?.candidate?.name || 'Unknown',
-            job: item.application?.job?.job_title || 'Unknown',
+            job: item.application?.job?.job_title ? `${item.application.job.job_title} (ID: ${item.application.job.job_id})` : 'Unknown',
             status: item.application?.application_status || 'Received',
             overallScore: Math.round(item.total_score || 0),
             skillsMatch,

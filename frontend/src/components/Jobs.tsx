@@ -372,7 +372,7 @@ export default function Jobs({ onViewRanking, departmentFilterId, userRole }: Jo
                       <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center">
                           <div className="w-2 h-2 rounded-full bg-[#1d4ed8] mr-3"></div>
-                          <h3 className="text-xl font-serif font-bold text-[#0f172a]">{job.job_title}</h3>
+                          <h3 className="text-xl font-serif font-bold text-[#0f172a]">{job.job_title} <span className="text-sm font-sans font-normal text-slate-400 ml-2">ID: {job.job_id}</span></h3>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="px-3 py-1 bg-[#1d4ed8] text-white text-xs font-medium rounded-full">Active</span>
@@ -387,15 +387,29 @@ export default function Jobs({ onViewRanking, departmentFilterId, userRole }: Jo
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                                 </svg>
                               </button>
+
                               <button 
-                                onClick={() => navigate(`/edit-job/${job.job_id}`)}
+                                onClick={() => navigate(`/view-job/${job.job_id}`)}
                                 className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
-                                title="Edit Job"
+                                title="View Job Details"
                               >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                 </svg>
                               </button>
+
+                              {getApplicantStats(job).total === 0 && (
+                                <button 
+                                  onClick={() => navigate(`/edit-job/${job.job_id}`)}
+                                  className="text-slate-400 hover:text-[#1d4ed8] transition-colors"
+                                  title="Edit Job"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                                  </svg>
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
@@ -427,7 +441,7 @@ export default function Jobs({ onViewRanking, departmentFilterId, userRole }: Jo
 
                       <div className="mt-auto grid grid-cols-2 gap-3">
                         <button 
-                          onClick={() => onViewRanking && onViewRanking(job.job_title)}
+                          onClick={() => onViewRanking && onViewRanking(`${job.job_title} (ID: ${job.job_id})`)}
                           className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white py-2.5 rounded-lg font-medium text-sm transition-colors"
                         >
                           View Applicants
@@ -460,7 +474,7 @@ export default function Jobs({ onViewRanking, departmentFilterId, userRole }: Jo
                       <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center">
                           <div className="w-2 h-2 rounded-full bg-orange-500 mr-3"></div>
-                          <h3 className="text-xl font-serif font-bold text-[#0f172a]">{job.job_title}</h3>
+                          <h3 className="text-xl font-serif font-bold text-[#0f172a]">{job.job_title} <span className="text-sm font-sans font-normal text-slate-400 ml-2">ID: {job.job_id}</span></h3>
                         </div>
                         <span className="px-3 py-1 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">Pending Review</span>
                       </div>
@@ -532,7 +546,7 @@ export default function Jobs({ onViewRanking, departmentFilterId, userRole }: Jo
                   {archivedJobs.map((job) => (
                     <div key={job.job_id} className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col opacity-80 hover:opacity-100 transition-opacity">
                       <div className="flex justify-between items-start mb-4">
-                        <h3 className="text-xl font-serif font-bold text-[#0f172a] pl-5">{job.job_title}</h3>
+                        <h3 className="text-xl font-serif font-bold text-[#0f172a] pl-5">{job.job_title} <span className="text-sm font-sans font-normal text-slate-400 ml-2">ID: {job.job_id}</span></h3>
                         <div className="flex items-center gap-3">
                           <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full capitalize">{job.job_status}</span>
                           {!departmentFilterId && (

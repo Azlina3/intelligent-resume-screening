@@ -1,4 +1,5 @@
 interface JobRequirement {
+  requirement_id?: number;
   requirement_name: string;
   is_mandatory: boolean;
   type_id: number; // 1 = Tech, 2 = Soft, 3 = Domain
@@ -114,6 +115,8 @@ export function evaluateCandidateMatch(
   let experiencePoints = 0;
   let educationPoints = 0;
 
+  const requirementMatches: { requirement_id: number | null, criteria: string, score_value: number }[] = [];
+
   // 1. Compile all parsed candidate values into lookup sets
   const candidateSkillsSet = new Set([
     ...(candidateProfile.skills?.technical || []).map((s: string) => s.toLowerCase().trim()),
@@ -136,13 +139,23 @@ export function evaluateCandidateMatch(
     const allCandidateSkills = [...candidateSkillsSet, ...candidateLanguagesSet];
     const candEmbeddings = candidateProfile.embedded_skills || [];
     
+    let reqPoints = 0;
     // Check if requirement exists in skills or languages
     if (isSkillMatch(reqName, allCandidateSkills, req.embedding, candEmbeddings)) {
+      reqPoints = itemWeight;
       if (req.is_mandatory) {
         mandatoryPoints += itemWeight;
       } else {
         optionalPoints += itemWeight;
       }
+    }
+
+    if (req.requirement_id) {
+      requirementMatches.push({
+        requirement_id: req.requirement_id,
+        criteria: req.requirement_name,
+        score_value: reqPoints
+      });
     }
   });
 
@@ -176,6 +189,12 @@ export function evaluateCandidateMatch(
     : 1;
 
   experiencePoints = (totalExpWeight * totalExpRatio) + (relevantExpWeight * relevantExpRatio);
+  
+  requirementMatches.push({
+    requirement_id: null,
+    criteria: 'Experience Match',
+    score_value: experiencePoints
+  });
 
   // 4. Process Education Level Threshold (Counted as a Mandatory item)
   const eduWeight = 10;
@@ -198,7 +217,15 @@ export function evaluateCandidateMatch(
       const candEmbeddings = candidateProfile.embedded_skills || [];
       const hasDegreeMatch = degreeRequirements.some(req => {
         const cleanName = req.requirement_name.trim().toLowerCase();
-        return isSkillMatch(cleanName, [candidateProfile.education?.raw_title?.toLowerCase() || ""], req.embedding, candEmbeddings);
+        const matched = isSkillMatch(cleanName, [candidateProfile.education?.raw_title?.toLowerCase() || ""], req.embedding, candEmbeddings);
+        if (matched && req.requirement_id) {
+          requirementMatches.push({
+            requirement_id: req.requirement_id,
+            criteria: req.requirement_name,
+            score_value: eduWeight // give full weight if matched
+          });
+        }
+        return matched;
       });
       relevanceScore = hasDegreeMatch ? 1.0 : (jobConfig.strictEducationMatch ? 0 : 0.5);
     } else {
@@ -211,9 +238,15 @@ export function evaluateCandidateMatch(
     
     educationPoints = eduWeight * relevanceScore;
   }
+  
+  requirementMatches.push({
+    requirement_id: null,
+    criteria: 'Education Match',
+    score_value: educationPoints
+  });
 
   // 5. Calculate Final Percentage
-  if (maxPossiblePoints === 0) return { finalPercentage: 0, breakdown: { mandatoryPoints, optionalPoints, experiencePoints, educationPoints } };
+  if (maxPossiblePoints === 0) return { finalPercentage: 0, breakdown: { mandatoryPoints, optionalPoints, experiencePoints, educationPoints }, requirementMatches };
   
   const candidatePointsEarned = mandatoryPoints + optionalPoints + experiencePoints + educationPoints;
   const finalPercentage = (candidatePointsEarned / maxPossiblePoints) * 100;
@@ -225,6 +258,8 @@ export function evaluateCandidateMatch(
       optionalPoints,
       experiencePoints,
       educationPoints
-    }
+    },
+    requirementMatches
   };
 }
+
