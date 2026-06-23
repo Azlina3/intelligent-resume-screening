@@ -10,8 +10,9 @@ export default function CreateJob() {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [availableTemplates, setAvailableTemplates] = useState<any[]>([]);
 
+  const [isViewOnlyRoute, setIsViewOnlyRoute] = useState(window.location.pathname.includes('/view-job'));
   // Templates now act as a pre-fill rather than a strict lock
-  const isFieldDisabled = false;
+  const [isFieldDisabled, setIsFieldDisabled] = useState(isViewOnlyRoute);
 
   // Basic Details State
   const [jobTitle, setJobTitle] = useState('');
@@ -92,11 +93,16 @@ export default function CreateJob() {
       const fetchJobDetails = async () => {
         const { data: job } = await supabase
           .from('job')
-          .select('*, job_requirement(*)')
+          .select('*, job_requirement(*), application(application_id)')
           .eq('job_id', jobId)
           .single();
         
         if (job) {
+          if (!isViewOnlyRoute && job.application && job.application.length > 0) {
+            alert("This job already has candidates. Editing is disabled. You are now in View mode.");
+            setIsFieldDisabled(true);
+            setIsViewOnlyRoute(true);
+          }
           setJobTitle(job.job_title || '');
           setDepartmentId(job.department_id?.toString() || '');
           setLocation(job.location || '');
@@ -230,6 +236,12 @@ export default function CreateJob() {
 
   const handleSubmit = async (status: 'active' | 'draft') => {
     if (isSubmitting) return;
+
+    if (!jobTitle.trim() || !departmentId || !location.trim() || !employmentType || !minSalary || !maxSalary || !applicationDeadline || minTotalExperience === '' || minRelevantExperience === '') {
+      alert("Please fill in all mandatory fields (Title, Department, Location, Type, Salaries, Deadline, and Experiences).");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       // Get current user
@@ -415,7 +427,7 @@ export default function CreateJob() {
           value={skill.name}
           onChange={(e) => updateSkill(setter, index, 'name', e.target.value)}
           disabled={isFieldDisabled}
-          className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+          className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
         />
       </div>
       <div className="w-36">
@@ -424,7 +436,7 @@ export default function CreateJob() {
             value={skill.proficiency}
             onChange={(e) => updateSkill(setter, index, 'proficiency', e.target.value)}
             disabled={isFieldDisabled}
-            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
           >
             <option value="entry">Entry</option>
             <option value="intermediate">Intermediate</option>
@@ -441,7 +453,7 @@ export default function CreateJob() {
             value={skill.priority}
             onChange={(e) => updateSkill(setter, index, 'priority', e.target.value)}
             disabled={isFieldDisabled}
-            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+            className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
           >
             <option value="Mandatory">Mandatory</option>
             <option value="Preferred">Preferred</option>
@@ -456,7 +468,7 @@ export default function CreateJob() {
           type="button"
           onClick={() => removeSkillRow(setter, index)}
           disabled={isFieldDisabled}
-          className="w-11 h-11 flex-shrink-0 rounded-lg bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-11 h-11 flex-shrink-0 rounded-lg bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shadow-sm disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
           title="Remove row"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -466,7 +478,7 @@ export default function CreateJob() {
             type="button"
             onClick={() => addSkillRow(setter, typeId)}
             disabled={isFieldDisabled}
-            className="w-11 h-11 flex-shrink-0 rounded-lg bg-[#1d4ed8] text-white flex items-center justify-center hover:bg-[#1e40af] transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+            className="w-11 h-11 flex-shrink-0 rounded-lg bg-[#1d4ed8] text-white flex items-center justify-center hover:bg-[#1e40af] transition-colors shadow-sm disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
             title="Add row"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
@@ -495,8 +507,8 @@ export default function CreateJob() {
 
         {/* Page Header */}
         <div className="mb-10 text-left">
-          <h1 className="text-4xl font-serif font-bold text-[#0f172a] mb-3 tracking-tight">{isEditing ? 'Edit Job Opening' : 'Create Job Opening'}</h1>
-          <p className="text-slate-500 text-base">Define the explicit criteria, structure, and scoring parameters for your {isEditing ? 'existing' : 'new'} position.</p>
+          <h1 className="text-4xl font-serif font-bold text-[#0f172a] mb-3 tracking-tight">{isViewOnlyRoute ? 'View Job Details' : (isEditing ? 'Edit Job Opening' : 'Create Job Opening')}</h1>
+          <p className="text-slate-500 text-base">{isViewOnlyRoute ? 'Review the criteria, structure, and scoring parameters for this position.' : `Define the explicit criteria, structure, and scoring parameters for your ${isEditing ? 'existing' : 'new'} position.`}</p>
         </div>
 
         {/* Form Card */}
@@ -537,24 +549,24 @@ export default function CreateJob() {
               <h2 className="text-xl font-serif font-bold text-[#0f172a] mb-6">Basic Details</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Job Title</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Job Title <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={jobTitle}
                     onChange={(e) => setJobTitle(e.target.value)}
                     disabled={isFieldDisabled}
                     placeholder="e.g., Senior Frontend Developer"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Department</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Department <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <select
                       value={departmentId}
                       onChange={(e) => setDepartmentId(e.target.value)}
                       disabled={isFieldDisabled}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                     >
                       <option value="" disabled>Select department...</option>
                       {departments.map((dept) => (
@@ -569,24 +581,24 @@ export default function CreateJob() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Location</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Location <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
                     disabled={isFieldDisabled}
                     placeholder="e.g., Remote, Hybrid, or New York, NY"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Employment Type</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Employment Type <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <select
                       value={employmentType}
                       onChange={(e) => setEmploymentType(e.target.value)}
                       disabled={isFieldDisabled}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                     >
                       <option value="" disabled>Select type...</option>
                       <option value="full_time">Full-time</option>
@@ -600,7 +612,7 @@ export default function CreateJob() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Salary Budget</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Salary Budget <span className="text-red-500">*</span></label>
                   <div className="flex items-center gap-4">
                     <input
                       type="number"
@@ -610,7 +622,7 @@ export default function CreateJob() {
                       min="0"
                       disabled={isFieldDisabled}
                       placeholder="Min"
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                     />
                     <span className="text-slate-400 font-medium">-</span>
                     <input
@@ -621,7 +633,7 @@ export default function CreateJob() {
                       min="0"
                       disabled={isFieldDisabled}
                       placeholder="Max"
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                     />
                   </div>
                   {minSalary && maxSalary && parseFloat(maxSalary) <= parseFloat(minSalary) && (
@@ -629,13 +641,13 @@ export default function CreateJob() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Application Deadline</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Application Deadline <span className="text-red-500">*</span></label>
                   <input
                     type="date"
                     value={applicationDeadline}
                     onChange={(e) => setApplicationDeadline(e.target.value)}
                     disabled={isFieldDisabled}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -646,7 +658,7 @@ export default function CreateJob() {
               <h2 className="text-xl font-serif font-bold text-[#0f172a] mb-6">Candidate Background Criteria</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Total Experience Required</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Total Experience Required <span className="text-red-500">*</span></label>
                   <input
                     type="number"
                     value={minTotalExperience}
@@ -655,11 +667,11 @@ export default function CreateJob() {
                     min="0"
                     disabled={isFieldDisabled}
                     placeholder="Min Years"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Relevant Technology Experience</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Relevant Technology Experience <span className="text-red-500">*</span></label>
                   <input
                     type="number"
                     value={minRelevantExperience}
@@ -668,7 +680,7 @@ export default function CreateJob() {
                     min="0"
                     disabled={isFieldDisabled}
                     placeholder="Min Years"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div>
@@ -678,7 +690,7 @@ export default function CreateJob() {
                       value={educationLevel}
                       onChange={(e) => setEducationLevel(e.target.value)}
                       disabled={isFieldDisabled}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                     >
                       <option value="" disabled>Select education level...</option>
                       <option value="no_requirement">No Requirement</option>
@@ -697,14 +709,14 @@ export default function CreateJob() {
                 <div className="md:col-span-2 mt-2 bg-slate-50 border border-slate-200 rounded-xl p-5">
                   <h3 className="text-sm font-semibold text-slate-800 mb-4">Education Flexibility</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <label className="flex items-start cursor-pointer">
+                    <label className={`flex items-start ${isFieldDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                       <div className="relative flex-shrink-0 mt-0.5">
                         <input
                           type="checkbox"
                           checked={acceptPursuingEducation}
                           onChange={(e) => setAcceptPursuingEducation(e.target.checked)}
                           disabled={isFieldDisabled}
-                          className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="sr-only peer disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                         />
                         <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
                         <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-4"></div>
@@ -715,14 +727,14 @@ export default function CreateJob() {
                       </div>
                     </label>
 
-                    <label className="flex items-start cursor-pointer">
+                    <label className={`flex items-start ${isFieldDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                       <div className="relative flex-shrink-0 mt-0.5">
                         <input
                           type="checkbox"
                           checked={equivalentExperienceAccepted}
                           onChange={(e) => setEquivalentExperienceAccepted(e.target.checked)}
                           disabled={isFieldDisabled}
-                          className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="sr-only peer disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                         />
                         <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
                         <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-4"></div>
@@ -733,14 +745,14 @@ export default function CreateJob() {
                       </div>
                     </label>
 
-                    <label className="flex items-start cursor-pointer">
+                    <label className={`flex items-start ${isFieldDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                       <div className="relative flex-shrink-0 mt-0.5">
                         <input
                           type="checkbox"
                           checked={strictEducationMatch}
                           onChange={(e) => setStrictEducationMatch(e.target.checked)}
                           disabled={isFieldDisabled}
-                          className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="sr-only peer disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                         />
                         <div className="block bg-slate-200 w-10 h-6 rounded-full transition-colors peer-checked:bg-[#1d4ed8]"></div>
                         <div className="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-4"></div>
@@ -759,8 +771,9 @@ export default function CreateJob() {
                     type="text"
                     value={acceptableDegrees}
                     onChange={(e) => setAcceptableDegrees(e.target.value.replace(/[0-9]/g, ''))}
+                    disabled={isFieldDisabled}
                     placeholder="e.g., Computer Science, Business, Economics (comma separated)"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -820,18 +833,18 @@ export default function CreateJob() {
 
               {/* Tech Assessment Flag */}
               <div className="flex items-center">
-                <label className="flex items-center cursor-pointer group">
+                <label className={`flex items-center group ${isFieldDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                   <div className="relative flex items-center justify-center w-5 h-5 border-2 border-slate-300 rounded group-hover:border-[#1d4ed8] transition-colors mr-3">
                     <input
                       type="checkbox"
                       checked={requiresTechAssessment}
                       onChange={(e) => setRequiresTechAssessment(e.target.checked)}
                       disabled={isFieldDisabled}
-                      className="sr-only peer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="sr-only peer disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                     />
                     <svg className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity bg-[#1d4ed8] absolute inset-0 rounded-sm m-[1px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                   </div>
-                  <span className={`text-sm font-medium transition-colors ${isFieldDisabled ? 'text-slate-400' : 'text-slate-700 group-hover:text-slate-900'}`}>Include Technical Screening Flag (Requires coding/technical test)</span>
+                  <span className={`text-sm font-medium transition-colors ${'text-slate-700 group-hover:text-slate-900'}`}>Include Technical Screening Flag (Requires coding/technical test)</span>
                 </label>
               </div>
             </section>
@@ -848,14 +861,14 @@ export default function CreateJob() {
                       value={resp}
                       onChange={(e) => updateResponsibility(index, e.target.value)}
                       disabled={isFieldDisabled}
-                      className="flex-1 bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="flex-1 bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                     />
                     {index === responsibilities.length - 1 ? (
                       <button
                         type="button"
                         onClick={addResponsibility}
                         disabled={isFieldDisabled}
-                        className="w-11 h-11 flex-shrink-0 rounded-lg bg-[#0f172a] text-white flex items-center justify-center hover:bg-slate-800 transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+                        className="w-11 h-11 flex-shrink-0 rounded-lg bg-[#0f172a] text-white flex items-center justify-center hover:bg-slate-800 transition-colors shadow-sm disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
                       </button>
@@ -864,7 +877,7 @@ export default function CreateJob() {
                         type="button"
                         onClick={() => removeResponsibility(index)}
                         disabled={isFieldDisabled}
-                        className="w-11 h-11 flex-shrink-0 rounded-lg bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-11 h-11 flex-shrink-0 rounded-lg bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shadow-sm disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                       </button>
@@ -879,22 +892,26 @@ export default function CreateJob() {
           {/* Footer Actions */}
           <div className="bg-slate-50 border-t border-slate-200 p-6 sm:px-10 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => handleSubmit('active')}
-                disabled={isSubmitting}
-                className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? 'Saving...' : (isEditing ? 'Save & Publish' : 'Create & Generate Link')}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSubmit('draft')}
-                disabled={isSubmitting}
-                className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? 'Saving...' : 'Save as Draft'}
-              </button>
+              {!isViewOnlyRoute && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleSubmit('active')}
+                    disabled={isSubmitting}
+                    className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? 'Saving...' : (isEditing ? 'Save & Publish' : 'Create & Generate Link')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSubmit('draft')}
+                    disabled={isSubmitting}
+                    className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 px-6 py-3 rounded-lg font-medium text-sm transition-colors shadow-sm disabled:bg-white disabled:text-slate-800 disabled:opacity-100 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? 'Saving...' : 'Save as Draft'}
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -914,7 +931,7 @@ export default function CreateJob() {
               onClick={() => navigate('/dashboard')}
               className="text-slate-500 hover:text-slate-800 font-medium text-sm transition-colors"
             >
-              Cancel
+              {isViewOnlyRoute ? 'Back to Dashboard' : 'Cancel'}
             </button>
           </div>
         </div>

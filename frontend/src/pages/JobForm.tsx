@@ -208,6 +208,11 @@ export default function JobForm() {
       return;
     }
 
+    if (!fullName.trim() || !idNo.trim() || !email.trim() || !phone.trim() || !gender || !maritalStatus || !currentSalary || !expectedSalary) {
+      alert("Please fill in all mandatory fields: Full Name, ID, Gender, Marital Status, Email, Phone, and Salaries.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       // 1. Check or Create Candidate
@@ -366,7 +371,7 @@ export default function JobForm() {
         strictEducationMatch: jobDetails?.strict_education_match || false
       };
 
-      const { finalPercentage, breakdown } = evaluateCandidateMatch(
+      const { finalPercentage, breakdown, requirementMatches } = evaluateCandidateMatch(
         jobRequirements,
         jobConfig,
         candidateProfile
@@ -382,15 +387,17 @@ export default function JobForm() {
           rank: 1
         }]);
         
-      if (!scoreError) {
+      if (!scoreError && requirementMatches && requirementMatches.length > 0) {
+        const breakdownInserts = requirementMatches.map((rm) => ({
+          score_id: scoreId,
+          requirement_id: rm.requirement_id || null,
+          criteria: rm.criteria,
+          score_value: rm.score_value
+        }));
+        
         await supabase
           .from('score_breakdown')
-          .insert([
-            { score_id: scoreId, criteria: 'Mandatory Requirements', score_value: breakdown.mandatoryPoints },
-            { score_id: scoreId, criteria: 'Optional Requirements', score_value: breakdown.optionalPoints },
-            { score_id: scoreId, criteria: 'Experience Match', score_value: breakdown.experiencePoints },
-            { score_id: scoreId, criteria: 'Education Match', score_value: breakdown.educationPoints }
-          ]);
+          .insert(breakdownInserts);
       }
 
       // 4. Insert Candidate Data
@@ -650,11 +657,11 @@ export default function JobForm() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Full Name <span className="text-red-500">*</span></label>
                   <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="e.g., John Doe" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Identification / Passport Number</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Identification / Passport Number <span className="text-red-500">*</span></label>
                   <input type="text" value={idNo} onChange={(e) => setIdNo(e.target.value)} placeholder="e.g., 020405-04-XXXX" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
                 </div>
                 <div>
@@ -663,7 +670,7 @@ export default function JobForm() {
                   {isMalaysianIC && <p className="text-xs text-slate-500 mt-1 text-emerald-600 font-medium">✨ Auto-extracted from IC number.</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Gender</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Gender <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <select value={gender} onChange={(e) => setGender(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors">
                       <option value="" disabled>Select Gender</option>
@@ -676,7 +683,7 @@ export default function JobForm() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Marital Status</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Marital Status <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <select value={maritalStatus} onChange={(e) => setMaritalStatus(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors">
                       <option value="" disabled>Select Status</option>
@@ -691,11 +698,11 @@ export default function JobForm() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Email Address</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Email Address <span className="text-red-500">*</span></label>
                   <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g., john@example.com" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Phone Number</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Phone Number <span className="text-red-500">*</span></label>
                   <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g., +60 12-345 6789" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
                 </div>
               </div>
@@ -884,7 +891,7 @@ export default function JobForm() {
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Current Salary</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Current Salary <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-slate-400 font-medium">
                       RM
@@ -893,7 +900,7 @@ export default function JobForm() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Expected Salary</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Expected Salary <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-slate-400 font-medium">
                       RM

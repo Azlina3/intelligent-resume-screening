@@ -140,9 +140,21 @@ export default function CandidateDetails({
 
       const scoreData = Array.isArray(appData.score) ? appData.score[0] : appData.score;
       const breakdowns = scoreData?.score_breakdown || [];
-      const mandatory = breakdowns.find((b: any) => b.criteria === 'Mandatory Requirements')?.score_value || 0;
-      const optional = breakdowns.find((b: any) => b.criteria === 'Optional Requirements')?.score_value || 0;
-      const skillsMatchPoints = Number(mandatory) + Number(optional);
+      
+      // Sum up all score breakdown rows that correspond to individual skills (i.e. not Experience/Education)
+      const skillsBreakdowns = breakdowns.filter((b: any) => 
+        b.criteria !== 'Education Match' && b.criteria !== 'Experience Match' && b.criteria !== 'Mandatory Requirements' && b.criteria !== 'Optional Requirements'
+      );
+      
+      let skillsMatchPoints = 0;
+      if (skillsBreakdowns.length > 0) {
+        skillsMatchPoints = skillsBreakdowns.reduce((sum: number, b: any) => sum + Number(b.score_value || 0), 0);
+      } else {
+        // Fallback for old data that might still use the old generic categories
+        const mandatory = breakdowns.find((b: any) => b.criteria === 'Mandatory Requirements')?.score_value || 0;
+        const optional = breakdowns.find((b: any) => b.criteria === 'Optional Requirements')?.score_value || 0;
+        skillsMatchPoints = Number(mandatory) + Number(optional);
+      }
       
       let maxSkillsPoints = 0;
       skillsReqData.forEach((req: any) => {

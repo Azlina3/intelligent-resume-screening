@@ -187,8 +187,8 @@ export default function CreateTemplate() {
         return;
       }
 
-      if (!templateName || !jobTitle) {
-         alert('Template Name and Job Title are required.');
+      if (!templateName.trim() || !jobTitle.trim() || !location.trim() || !employmentType || !minSalary || !maxSalary || minTotalExperience === '' || minRelevantExperience === '' || !educationLevel || responsibilities.filter(r => r.trim() !== '').length === 0) {
+         alert('Please fill in all mandatory fields (Template Name, Title, Location, Type, Salaries, Experiences, Education Level, and at least one Responsibility).');
          return;
       }
 
@@ -406,7 +406,7 @@ export default function CreateTemplate() {
               <h2 className="text-xl font-serif font-bold text-[#0f172a] mb-6">Template Details</h2>
               <div className="grid grid-cols-1 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Template Name</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Template Name <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={templateName}
@@ -424,7 +424,7 @@ export default function CreateTemplate() {
               <h2 className="text-xl font-serif font-bold text-[#0f172a] mb-6">Basic Details</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Job Title</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Job Title <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={jobTitle}
@@ -456,7 +456,7 @@ export default function CreateTemplate() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Location</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Location <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={location}
@@ -467,7 +467,7 @@ export default function CreateTemplate() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Employment Type</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Employment Type <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <select
                       value={employmentType}
@@ -487,7 +487,7 @@ export default function CreateTemplate() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Salary Budget</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Salary Budget <span className="text-red-500">*</span></label>
                   <div className="flex items-center gap-4">
                     <input
                       type="number"
@@ -521,7 +521,7 @@ export default function CreateTemplate() {
               <h2 className="text-xl font-serif font-bold text-[#0f172a] mb-6">Candidate Background Criteria</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Total Experience Required</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Total Experience Required <span className="text-red-500">*</span></label>
                   <input
                     type="number"
                     value={minTotalExperience}
@@ -534,7 +534,7 @@ export default function CreateTemplate() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Relevant Technology Experience</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Relevant Technology Experience <span className="text-red-500">*</span></label>
                   <input
                     type="number"
                     value={minRelevantExperience}
@@ -547,7 +547,7 @@ export default function CreateTemplate() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Latest Education Level</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Latest Education Level <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <select
                       value={educationLevel}
@@ -713,7 +713,7 @@ export default function CreateTemplate() {
 
             {/* 4. Job Responsibilities & Overview */}
             <section>
-              <h2 className="text-xl font-serif font-bold text-[#0f172a] mb-6">Job Responsibilities & Overview</h2>
+              <h2 className="text-xl font-serif font-bold text-[#0f172a] mb-6">Job Responsibilities & Overview <span className="text-red-500">*</span></h2>
               <div className="space-y-3">
                 {responsibilities.map((resp, index) => (
                   <div key={index} className="flex items-start gap-3">

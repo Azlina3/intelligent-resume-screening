@@ -32,7 +32,7 @@ export default function Candidates({ onViewInRanking, departmentFilterId }: { on
           application_id,
           application_status,
           candidate:candidate_id ( name, email ),
-          job:job_id!inner ( job_title, department_id ),
+          job:job_id!inner ( job_id, job_title, department_id ),
           score ( total_score )
         `);
         
@@ -53,7 +53,7 @@ export default function Candidates({ onViewInRanking, departmentFilterId }: { on
             id: app.application_id,
             name: app.candidate?.name || 'Unknown',
             email: app.candidate?.email || 'Unknown',
-            job: app.job?.job_title || 'Unknown',
+            job: app.job?.job_title ? `${app.job.job_title} (ID: ${app.job.job_id})` : 'Unknown',
             status: app.application_status || 'Received',
             match: matchScore != null ? Math.round(Number(matchScore)) : 0
           };
