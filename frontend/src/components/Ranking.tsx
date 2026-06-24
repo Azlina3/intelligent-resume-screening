@@ -139,8 +139,14 @@ export default function Ranking({
 
   const uniqueJobs = useMemo(() => {
     const jobs = new Set(rankings.map(r => r.job));
-    return ['All Positions', ...Array.from(jobs)];
+    return Array.from(jobs);
   }, [rankings]);
+
+  useEffect(() => {
+    if (uniqueJobs.length > 0 && (!jobFilter || jobFilter === 'All Positions' || !uniqueJobs.includes(jobFilter))) {
+      setJobFilter(uniqueJobs[0]);
+    }
+  }, [uniqueJobs, jobFilter]);
 
   const sortedAndFilteredRankings = useMemo(() => {
     let filtered = rankings;
@@ -151,7 +157,7 @@ export default function Ranking({
     }
 
     // Job filter
-    if (jobFilter !== 'All Positions') {
+    if (jobFilter && jobFilter !== 'All Positions') {
       filtered = filtered.filter(r => r.job === jobFilter);
     }
 

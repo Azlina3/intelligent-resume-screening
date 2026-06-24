@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 import { supabase } from '../supabaseClient';
 import { logActivity } from '../utils/activityLogger';
@@ -99,6 +99,14 @@ export default function EmailTemplates({ candidateData }: { candidateData?: any 
   
   const selectedTemplate = TEMPLATES.find(t => t.id === selectedTemplateId) || TEMPLATES[0];
 
+  const [customBody, setCustomBody] = useState(selectedTemplate.body);
+  const [isEditingBody, setIsEditingBody] = useState(false);
+
+  useEffect(() => {
+    setCustomBody(selectedTemplate.body);
+    setIsEditingBody(false);
+  }, [selectedTemplateId, selectedTemplate.body]);
+
   const renderBodyWithTokens = (text: string) => {
     // A simple regex to replace tokens like [Token] with styled spans
     const parts = text.split(/(\[[^\]]+\])/g);
@@ -124,8 +132,9 @@ export default function EmailTemplates({ candidateData }: { candidateData?: any 
         if (part === '[Candidate Name]') displayValue = candidateData?.name || '[Candidate Name]';
         if (part === '[Position]') displayValue = candidateData?.jobTitle || '[Position]';
 
+        const bgClass = !candidateData ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700";
         return (
-          <span key={index} className="inline-block bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-sm font-medium mx-0.5 my-0.5">
+          <span key={index} className={`inline-block ${bgClass} px-1.5 py-0.5 rounded text-sm font-medium mx-0.5 my-0.5`}>
             {displayValue}
           </span>
         );
@@ -141,7 +150,7 @@ export default function EmailTemplates({ candidateData }: { candidateData?: any 
   };
 
   const compileEmailBody = () => {
-    let body = selectedTemplate.body;
+    let body = customBody;
     body = body.replace(/\[Candidate Name\]/g, candidateData?.name || '[Candidate Name]');
     body = body.replace(/\[Position\]/g, candidateData?.jobTitle || '[Position]');
     if (selectedTemplateId === 'interview') {
@@ -257,8 +266,8 @@ export default function EmailTemplates({ candidateData }: { candidateData?: any 
 
             <div className="p-6 sm:p-8 flex-1 space-y-7 overflow-y-auto">
               {/* Recipient Banner */}
-              <div className="bg-[#f0f9ff] rounded-lg px-5 py-3 flex items-center gap-2 text-sm text-blue-800">
-                <div className="w-2 h-2 rounded-full bg-blue-500 mr-1"></div>
+              <div className={`border-2 rounded-lg px-5 py-3 flex items-center gap-2 text-sm ${candidateData ? 'bg-[#f0f9ff] text-blue-800 border-blue-400' : 'bg-red-50 text-red-800 border-red-400'}`}>
+                <div className={`w-2 h-2 rounded-full mr-1 ${candidateData ? 'bg-blue-500' : 'bg-red-500'}`}></div>
                 <span className="font-semibold">Recipient:</span>
                 <span>{candidateData ? `${candidateData.name} (${candidateData.email})` : 'Select a candidate from the Candidates list'}</span>
                 {candidateData?.jobTitle && (
@@ -365,11 +374,27 @@ export default function EmailTemplates({ candidateData }: { candidateData?: any 
               <div>
                 <div className="flex justify-between items-end mb-2">
                   <label className="block text-sm font-medium text-slate-700">Email Body</label>
-                  <span className="text-xs text-slate-400">Tokens resolve as you fill the scheduler above</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-400">Tokens resolve as you fill the scheduler above</span>
+                    <button 
+                      onClick={() => setIsEditingBody(!isEditingBody)}
+                      className="text-xs font-medium text-[#1d4ed8] hover:underline"
+                    >
+                      {isEditingBody ? 'View Preview' : 'Edit Template'}
+                    </button>
+                  </div>
                 </div>
-                <div className="w-full h-[320px] bg-white border border-slate-200 rounded-lg px-5 py-5 text-sm text-slate-800 overflow-y-auto leading-relaxed shadow-sm">
-                  {renderBodyWithTokens(selectedTemplate.body)}
-                </div>
+                {isEditingBody ? (
+                  <textarea 
+                    className="w-full h-[320px] bg-white border border-slate-200 rounded-lg px-5 py-5 text-sm text-slate-800 leading-relaxed shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] resize-y"
+                    value={customBody}
+                    onChange={(e) => setCustomBody(e.target.value)}
+                  />
+                ) : (
+                  <div className="w-full h-[320px] bg-white border border-slate-200 rounded-lg px-5 py-5 text-sm text-slate-800 overflow-y-auto leading-relaxed shadow-sm">
+                    {renderBodyWithTokens(customBody)}
+                  </div>
+                )}
               </div>
 
 

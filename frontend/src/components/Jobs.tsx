@@ -442,9 +442,14 @@ export default function Jobs({ onViewRanking, departmentFilterId, userRole }: Jo
                       <div className="mt-auto grid grid-cols-2 gap-3">
                         <button 
                           onClick={() => onViewRanking && onViewRanking(`${job.job_title} (ID: ${job.job_id})`)}
-                          className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white py-2.5 rounded-lg font-medium text-sm transition-colors"
+                          disabled={getApplicantStats(job).total === 0}
+                          className={`py-2.5 rounded-lg font-medium text-sm transition-colors ${
+                            getApplicantStats(job).total === 0 
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                              : 'bg-[#1d4ed8] hover:bg-[#1e40af] text-white'
+                          }`}
                         >
-                          View Applicants
+                          {getApplicantStats(job).total === 0 ? 'No Applicants' : 'View Applicants'}
                         </button>
                         <button 
                           onClick={() => copyLink(job.job_id)}
@@ -594,10 +599,15 @@ export default function Jobs({ onViewRanking, departmentFilterId, userRole }: Jo
                           ) : (
                             <div className="grid grid-cols-2 gap-3 mb-3">
                               <button 
-                                className="border border-slate-200 hover:bg-slate-50 text-slate-700 py-2.5 rounded-lg font-medium text-sm transition-colors"
+                                className={`border py-2.5 rounded-lg font-medium text-sm transition-colors ${
+                                  getApplicantStats(job).total === 0
+                                    ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
+                                    : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                                }`}
+                                disabled={getApplicantStats(job).total === 0}
                                 onClick={() => onViewRanking && onViewRanking(job.job_title)}
                               >
-                                View Applicants
+                                {getApplicantStats(job).total === 0 ? 'No Applicants' : 'View Applicants'}
                               </button>
                               <button 
                                 className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white py-2.5 rounded-lg font-medium text-sm flex items-center justify-center transition-colors"

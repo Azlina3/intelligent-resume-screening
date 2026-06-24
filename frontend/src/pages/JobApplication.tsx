@@ -244,6 +244,7 @@ export default function JobApplication() {
                         <input 
                           type="number" 
                           value={yearsOfExperience} 
+                          onWheel={(e) => (e.target as HTMLElement).blur()}
                           onChange={(e) => setYearsOfExperience(e.target.value ? Number(e.target.value) : "")} 
                           className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" 
                         />
@@ -319,7 +320,7 @@ export default function JobApplication() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Duration (Months)</label>
-                                    <input type="number" value={we.duration_months || ""} onChange={(e) => {
+                                    <input type="number" onWheel={(e) => (e.target as HTMLElement).blur()} value={we.duration_months || ""} onChange={(e) => {
                                         const newWE = [...workExperiences];
                                         newWE[index].duration_months = e.target.value ? Number(e.target.value) : "";
                                         setWorkExperiences(newWE);
