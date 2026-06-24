@@ -124,27 +124,47 @@ export default function CandidateDetails({
       const candidateLanguagesFull = appData.language?.map((l: any) => `${l.language} ${l.proficiency}`.toLowerCase()) || [];
       const skillsToMatchAgainst = [...extractedSkills, ...candidateLanguagesFull];
 
-      const matchedSkills = skillsReqData.filter((req: any) => 
-        isSkillMatch(req.requirement_name, skillsToMatchAgainst, req.embedding, candidateEmbeddings)
-      ).map((r: any) => r.requirement_name);
+      const scoreData = Array.isArray(appData.score) ? appData.score[0] : appData.score;
+      const breakdowns = scoreData?.score_breakdown || [];
       
-      const missingSkills = skillsReqData.filter((req: any) => 
-        !isSkillMatch(req.requirement_name, skillsToMatchAgainst, req.embedding, candidateEmbeddings)
-      ).map((r: any) => r.requirement_name);
+      // Sum up all score breakdown rows that correspond to individual skills
+      // AND only include skills that are STILL part of the current job requirements!
+      const skillsBreakdowns = breakdowns.filter((b: any) => 
+        !['Education Match', 'Experience Match', 'Mandatory Requirements', 'Optional Requirements'].includes(b.criteria) &&
+        skillsReqData.some((req: any) => req.requirement_name.toLowerCase() === b.criteria.toLowerCase())
+      );
+
+      let matchedSkills: { name: string, is_mandatory: boolean }[] = [];
+      let missingSkills: { name: string, is_mandatory: boolean }[] = [];
+
+      // Always trust the backend's score breakdown for matched skills so the points perfectly align with the UI.
+      if (skillsBreakdowns.length > 0) {
+        matchedSkills = skillsBreakdowns.filter((b: any) => Number(b.score_value) > 0).map((b: any) => ({
+          name: b.criteria,
+          is_mandatory: skillsReqData.find((req: any) => req.requirement_name.toLowerCase() === b.criteria.toLowerCase())?.is_mandatory || false
+        }));
+        // Missing skills should be any skill currently required that wasn't matched
+        missingSkills = skillsReqData
+          .filter((req: any) => !matchedSkills.some((m: any) => m.name.toLowerCase() === req.requirement_name.toLowerCase()))
+          .map((req: any) => ({
+            name: req.requirement_name,
+            is_mandatory: req.is_mandatory || false
+          }));
+      } else {
+        matchedSkills = skillsReqData.filter((req: any) => 
+          isSkillMatch(req.requirement_name, skillsToMatchAgainst, req.embedding, candidateEmbeddings)
+        ).map((r: any) => ({ name: r.requirement_name, is_mandatory: r.is_mandatory || false }));
+        
+        missingSkills = skillsReqData.filter((req: any) => 
+          !isSkillMatch(req.requirement_name, skillsToMatchAgainst, req.embedding, candidateEmbeddings)
+        ).map((r: any) => ({ name: r.requirement_name, is_mandatory: r.is_mandatory || false }));
+      }
       
       const additionalSkills = extractedSkills
         .filter((skill: string) => {
           const candEmbed = candidateEmbeddings.find(c => c.name.toLowerCase() === skill.toLowerCase())?.embedding;
           return !skillsReqData.some((req: any) => isSkillMatch(req.requirement_name, [skill], req.embedding, [{ name: skill, embedding: candEmbed }]));
         });
-
-      const scoreData = Array.isArray(appData.score) ? appData.score[0] : appData.score;
-      const breakdowns = scoreData?.score_breakdown || [];
-      
-      // Sum up all score breakdown rows that correspond to individual skills (i.e. not Experience/Education)
-      const skillsBreakdowns = breakdowns.filter((b: any) => 
-        b.criteria !== 'Education Match' && b.criteria !== 'Experience Match' && b.criteria !== 'Mandatory Requirements' && b.criteria !== 'Optional Requirements'
-      );
       
       let skillsMatchPoints = 0;
       if (skillsBreakdowns.length > 0) {
@@ -157,10 +177,21 @@ export default function CandidateDetails({
       }
       
       let maxSkillsPoints = 0;
+      let mandatoryCount = 0;
+      let optionalCount = 0;
       skillsReqData.forEach((req: any) => {
-        maxSkillsPoints += req.is_mandatory ? 10 : 3;
+        if (req.is_mandatory) {
+          maxSkillsPoints += 10;
+          mandatoryCount++;
+        } else {
+          maxSkillsPoints += 3;
+          optionalCount++;
+        }
       });
-      const skillsMatch = maxSkillsPoints > 0 ? Math.round((skillsMatchPoints / maxSkillsPoints) * 100) : 0;
+      
+      // Ensure we never exceed max points if data is somehow out of sync, and cap percentage to 100
+      skillsMatchPoints = Math.min(skillsMatchPoints, maxSkillsPoints);
+      const skillsMatch = maxSkillsPoints > 0 ? Math.min(100, Math.round((skillsMatchPoints / maxSkillsPoints) * 100)) : 0;
 
       const rawEdu = Number(breakdowns.find((b: any) => b.criteria === 'Education Match')?.score_value || 0);
       const educationMatch = Math.round((rawEdu / 10) * 100);
@@ -177,7 +208,13 @@ export default function CandidateDetails({
         matchedSkills,
         missingSkills,
         additionalSkills,
-        requiredCount: reqData?.length || 0
+        requiredCount: skillsReqData.length,
+        skillsMatchPoints,
+        maxSkillsPoints,
+        rawEdu,
+        rawExp,
+        mandatoryCount,
+        optionalCount
       });
       
     } catch (err: any) {
@@ -334,8 +371,8 @@ export default function CandidateDetails({
                   <div className="w-full bg-slate-200 rounded-full h-3 mb-2">
                     <div className="bg-[#1e293b] h-3 rounded-full" style={{ width: `${data.skillsMatch}%` }}></div>
                   </div>
-                  <p className="text-sm text-slate-400">
-                    {data.matchedSkills.length}/{data.requiredCount} required skills matched
+                  <p className="text-sm text-slate-400 mt-1">
+                    {data.matchedSkills.filter((s: any) => s.is_mandatory).length}/{data.mandatoryCount} Mandatory, {data.matchedSkills.filter((s: any) => !s.is_mandatory).length}/{data.optionalCount} Preferred matched
                   </p>
                 </div>
 
@@ -361,8 +398,40 @@ export default function CandidateDetails({
                     <div className="bg-[#1e293b] h-3 rounded-full" style={{ width: `${data.experienceMatch}%` }}></div>
                   </div>
                   <p className="text-sm text-slate-400">
-                    {data.years_of_experience || 0} years calculated vs {job.min_total_experience || 0}+ years required
+                    Candidate has {data.years_of_experience || 0} year{data.years_of_experience === 1 ? '' : 's'} of total professional experience vs {job.min_total_experience || 0}+ year{job.min_total_experience === 1 ? '' : 's'} required
                   </p>
+                </div>
+              </div>
+
+              {/* Detailed Score Calculation Box */}
+              <div className="mt-8 p-5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
+                <h3 className="font-serif font-bold text-slate-900 mb-4 text-base">Detailed Point Calculation</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span>
+                      <span className="font-medium text-slate-800">Skills Points</span>
+                      <span className="block text-slate-500 text-xs mt-0.5">{data.mandatoryCount} Mandatory ({data.mandatoryCount * 10} pts) & {data.optionalCount} Preferred ({data.optionalCount * 3} pts)</span>
+                    </span>
+                    <span className="font-medium">{data.skillsMatchPoints} / {data.maxSkillsPoints} pts</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>
+                      <span className="font-medium text-slate-800">Experience Points</span>
+                      <span className="block text-slate-500 text-xs mt-0.5">Scored based on meeting the minimum required years of experience</span>
+                    </span>
+                    <span className="font-medium">{data.rawExp} / 10 pts</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>
+                      <span className="font-medium text-slate-800">Education Points</span>
+                      <span className="block text-slate-500 text-xs mt-0.5">Scored based on meeting the required education level</span>
+                    </span>
+                    <span className="font-medium">{data.rawEdu} / 10 pts</span>
+                  </div>
+                  <div className="pt-3 mt-3 border-t border-slate-200 flex justify-between items-center font-bold text-[#0f172a]">
+                    <span>Total Points Earned</span>
+                    <span className="text-lg text-[#1e40af]">{data.skillsMatchPoints + data.rawExp + data.rawEdu} <span className="text-sm text-slate-500 font-medium">/ {data.maxSkillsPoints + 20} pts</span></span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -378,9 +447,10 @@ export default function CandidateDetails({
                   </div>
                   <div className="flex gap-2 flex-wrap ml-7">
                     {data.matchedSkills.length > 0 ? (
-                      data.matchedSkills.map((s: string, i: number) => (
-                        <span key={i} className="px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full">
-                          {s}
+                      data.matchedSkills.map((s: any, i: number) => (
+                        <span key={i} className="px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full flex items-center">
+                          {s.name}
+                          {s.is_mandatory && <span className="ml-1.5 text-red-500" title="Mandatory Requirement">★</span>}
                         </span>
                       ))
                     ) : (
@@ -395,9 +465,10 @@ export default function CandidateDetails({
                   </div>
                   <div className="flex gap-2 flex-wrap ml-7">
                     {data.missingSkills.length > 0 ? (
-                      data.missingSkills.map((s: string, i: number) => (
-                        <span key={i} className="px-3 py-1 bg-red-50 text-red-600 text-sm font-medium rounded-full border border-red-100">
-                          {s}
+                      data.missingSkills.map((s: any, i: number) => (
+                        <span key={i} className="px-3 py-1 bg-red-50 text-red-600 text-sm font-medium rounded-full border border-red-100 flex items-center">
+                          {s.name}
+                          {s.is_mandatory && <span className="ml-1.5 text-red-500" title="Mandatory Requirement">★</span>}
                         </span>
                       ))
                     ) : (

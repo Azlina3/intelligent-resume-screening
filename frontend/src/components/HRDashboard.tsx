@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../config/supabaseClient';
 import ProfileSettings from './ProfileSettings';
 import Jobs from './Jobs';
@@ -67,8 +67,9 @@ const MailIcon = () => (
 
 export default function HRDashboard({ userName, userRole }: { userName?: string, userRole?: string }) {
   const navigate = useNavigate();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'jobs' | 'templates' | 'candidates' | 'ranking' | 'emails' | 'candidate-details'>('dashboard');
-  const [jobsExpanded, setJobsExpanded] = useState(false);
+  const location = useLocation();
+  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'jobs' | 'templates' | 'candidates' | 'ranking' | 'emails' | 'candidate-details'>(location.state?.currentView || 'dashboard');
+  const [jobsExpanded, setJobsExpanded] = useState(location.state?.currentView === 'jobs' || location.state?.currentView === 'templates');
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
   const [selectedJobForRanking, setSelectedJobForRanking] = useState<string>('All Positions');
   const [highlightedCandidateId, setHighlightedCandidateId] = useState<string | null>(null);
@@ -225,7 +226,7 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
             <li>
               <a 
                 href="#" 
-                onClick={(e) => { e.preventDefault(); setCurrentView('dashboard'); }}
+                onClick={(e) => { e.preventDefault(); setCurrentView('dashboard'); setJobsExpanded(false); }}
                 className={`flex items-center px-8 py-2.5 transition-colors ${currentView === 'dashboard' ? 'text-white font-medium bg-white/5' : 'text-slate-300 hover:text-white'}`}
               >
                 <span className="mr-3 opacity-60">
@@ -257,6 +258,7 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
                       }
                     } else {
                       setCurrentView(viewName); 
+                      setJobsExpanded(false);
                       if (viewName !== 'ranking') {
                         setSelectedJobForRanking('All Positions');
                       }
@@ -296,7 +298,7 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
             <li>
               <a 
                 href="#" 
-                onClick={(e) => { e.preventDefault(); setCurrentView('settings'); }}
+                onClick={(e) => { e.preventDefault(); setCurrentView('settings'); setJobsExpanded(false); }}
                 className={`flex items-center px-8 py-2.5 transition-colors ${currentView === 'settings' ? 'text-white font-medium bg-white/5' : 'text-slate-300 hover:text-white'}`}
               >
                 <span className="mr-3 opacity-60">⚙️</span>

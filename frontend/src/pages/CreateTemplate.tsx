@@ -380,13 +380,13 @@ export default function CreateTemplate() {
         {/* Back Button */}
         <div className="mb-8">
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/dashboard', { state: { currentView: 'templates' } })}
             className="flex items-center text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium"
           >
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
-            Back to Dashboard
+            Back to Templates
           </button>
         </div>
 
@@ -491,6 +491,7 @@ export default function CreateTemplate() {
                   <div className="flex items-center gap-4">
                     <input
                       type="number"
+                      onWheel={(e) => (e.target as HTMLElement).blur()}
                       value={minSalary}
                       onChange={(e) => setMinSalary(e.target.value)}
                       onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
@@ -501,6 +502,7 @@ export default function CreateTemplate() {
                     <span className="text-slate-400 font-medium">-</span>
                     <input
                       type="number"
+                      onWheel={(e) => (e.target as HTMLElement).blur()}
                       value={maxSalary}
                       onChange={(e) => setMaxSalary(e.target.value)}
                       onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
@@ -524,6 +526,7 @@ export default function CreateTemplate() {
                   <label className="block text-sm font-medium text-slate-700 mb-2">Total Experience Required <span className="text-red-500">*</span></label>
                   <input
                     type="number"
+                    onWheel={(e) => (e.target as HTMLElement).blur()}
                     value={minTotalExperience}
                     onChange={(e) => setMinTotalExperience(e.target.value)}
                     onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
@@ -537,6 +540,7 @@ export default function CreateTemplate() {
                   <label className="block text-sm font-medium text-slate-700 mb-2">Relevant Technology Experience <span className="text-red-500">*</span></label>
                   <input
                     type="number"
+                    onWheel={(e) => (e.target as HTMLElement).blur()}
                     value={minRelevantExperience}
                     onChange={(e) => setMinRelevantExperience(e.target.value)}
                     onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}

@@ -330,7 +330,12 @@ export default function JobForm() {
           other_docs: otherDocUrls
         })
 
-      if (appError) throw new Error("Application Error: " + appError.message);
+      if (appError) {
+        if (appError.message?.includes("application_candidate_job_composite_unique")) {
+          throw new Error("You have already submitted an application for this job opening.");
+        }
+        throw new Error("Application Error: " + appError.message);
+      }
 
       // 3.5 Calculate and Insert Score
       const allCandidateSkills = [...technicalSkills, ...softSkills];
@@ -739,6 +744,7 @@ export default function JobForm() {
                         <input 
                           type="number" 
                           value={yearsOfExperience} 
+                          onWheel={(e) => (e.target as HTMLElement).blur()}
                           onChange={(e) => setYearsOfExperience(e.target.value ? Number(e.target.value) : "")} 
                           className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" 
                         />
@@ -819,7 +825,7 @@ export default function JobForm() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Duration (Months)</label>
-                                    <input type="number" value={we.duration_months || ""} onChange={(e) => {
+                                    <input type="number" onWheel={(e) => (e.target as HTMLElement).blur()} value={we.duration_months || ""} onChange={(e) => {
                                         const newWE = [...workExperiences];
                                         newWE[index].duration_months = e.target.value ? Number(e.target.value) : "";
                                         setWorkExperiences(newWE);
@@ -896,7 +902,7 @@ export default function JobForm() {
                     <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-slate-400 font-medium">
                       RM
                     </div>
-                    <input type="number" value={currentSalary} onChange={(e) => setCurrentSalary(e.target.value)} placeholder="5000" className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
+                    <input type="number" onWheel={(e) => (e.target as HTMLElement).blur()} value={currentSalary} onChange={(e) => setCurrentSalary(e.target.value)} placeholder="5000" className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
                   </div>
                 </div>
                 <div>
@@ -905,7 +911,7 @@ export default function JobForm() {
                     <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-slate-400 font-medium">
                       RM
                     </div>
-                    <input type="number" value={expectedSalary} onChange={(e) => setExpectedSalary(e.target.value)} placeholder="6000" className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
+                    <input type="number" onWheel={(e) => (e.target as HTMLElement).blur()} value={expectedSalary} onChange={(e) => setExpectedSalary(e.target.value)} placeholder="6000" className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
                   </div>
                 </div>
                 <div>

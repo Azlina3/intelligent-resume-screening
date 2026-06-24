@@ -173,7 +173,7 @@ export default function JobApplicationModal({ isOpen, onClose, jobTitle }: JobAp
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">Total Years of Experience</label>
-                        <input type="number" defaultValue={3} className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
+                        <input type="number" onWheel={(e) => (e.target as HTMLElement).blur()} defaultValue={3} className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/20 focus:border-[#1d4ed8] transition-colors" />
                       </div>
                     </div>
 
