@@ -674,7 +674,7 @@ export default function CreateJob() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Relevant Technology Experience <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Relevant Domain Experience <span className="text-red-500">*</span></label>
                   <input
                     type="number"
                     onWheel={(e) => (e.target as HTMLElement).blur()}

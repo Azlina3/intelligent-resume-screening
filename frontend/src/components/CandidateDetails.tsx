@@ -398,7 +398,7 @@ export default function CandidateDetails({
                     <div className="bg-[#1e293b] h-3 rounded-full" style={{ width: `${data.experienceMatch}%` }}></div>
                   </div>
                   <p className="text-sm text-slate-400">
-                    Candidate has {data.years_of_experience || 0} year{data.years_of_experience === 1 ? '' : 's'} of total professional experience vs {job.min_total_experience || 0}+ year{job.min_total_experience === 1 ? '' : 's'} required
+                    Candidate has {data.years_of_experience || 0} year{data.years_of_experience === 1 ? '' : 's'} of formal experience. {job.min_total_experience === 0 ? '(No minimum experience required)' : `(Job requires ${job.min_total_experience}+ years)`}
                   </p>
                 </div>
               </div>
