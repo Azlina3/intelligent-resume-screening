@@ -7,6 +7,7 @@ interface JobRequirement {
 }
 
 export interface JobConfig {
+  jobTitle?: string;
   minTotalExpYears: number;
   minRelevantExpYears: number;
   academicEquivalent: boolean;
@@ -164,19 +165,62 @@ export function evaluateCandidateMatch(
   const relevantExpWeight = 5;
   maxPossiblePoints += (totalExpWeight + relevantExpWeight);
   
-  // Calculate Formal Work Experience
+  // Calculate Formal Work Experience & Relevant Experience
   let candidateFormalExpYears = 0;
-  if (candidateProfile.work_experience && Array.isArray(candidateProfile.work_experience)) {
-    const totalMonths = candidateProfile.work_experience.reduce((sum: number, exp: any) => sum + (exp.duration_months || 0), 0);
-    candidateFormalExpYears = totalMonths / 12;
-  } else if (candidateProfile.years_of_experience) {
-    candidateFormalExpYears = Number(candidateProfile.years_of_experience);
-  }
+  let candidateRelevantExpYears = 0;
 
-  // Calculate Relevant Experience
-  let candidateRelevantExpYears = candidateFormalExpYears;
-  if (jobConfig.academicEquivalent && candidateProfile.calculated_metrics?.total_epe_months) {
-    candidateRelevantExpYears = candidateProfile.calculated_metrics.total_epe_months / 12;
+  if (candidateProfile.work_experience && Array.isArray(candidateProfile.work_experience)) {
+    const jobReqsForDomain = jobRequirements.filter(req => req.type_id !== 4);
+    
+    let formalMonths = 0;
+    let relevantMonths = 0;
+
+    candidateProfile.work_experience.forEach((exp: any) => {
+      const duration = exp.duration_months || 0;
+      
+      // 1. Strict Job Scope Match (Total Experience)
+      // Check if the past role title matches the target job title
+      let isScopeMatch = false;
+      if (jobConfig.jobTitle) {
+        isScopeMatch = isSkillMatch(jobConfig.jobTitle, [exp.role || ""]);
+      } else {
+        isScopeMatch = true; // Fallback if no target title provided
+      }
+      
+      if (isScopeMatch) {
+        formalMonths += duration;
+      }
+
+      // 2. Broad Domain Match (Relevant Experience)
+      // Check if the role or summary contains ANY of the job's required skills
+      // We omit embeddings here to force a strict text-search within the summary
+      const expText = `${exp.role || ""} ${exp.summary || ""}`;
+      const isDomainMatch = jobReqsForDomain.some(req => {
+         return isSkillMatch(req.requirement_name, [expText]);
+      });
+
+      if (isDomainMatch || isScopeMatch) {
+        relevantMonths += duration;
+      }
+    });
+
+    candidateFormalExpYears = formalMonths / 12;
+    candidateRelevantExpYears = relevantMonths / 12;
+
+    // Add Academic/Hackathon Equivalent Bonus to Relevant Experience if enabled
+    if (jobConfig.academicEquivalent && candidateProfile.calculated_metrics?.total_epe_months) {
+      const rawTotalFormalMonths = candidateProfile.work_experience.reduce((sum: number, exp: any) => sum + (exp.duration_months || 0), 0);
+      const academicBonusMonths = Math.max(0, candidateProfile.calculated_metrics.total_epe_months - rawTotalFormalMonths);
+      candidateRelevantExpYears += (academicBonusMonths / 12);
+    }
+
+  } else if (candidateProfile.years_of_experience) {
+    // Fallback if no detailed timeline is available
+    candidateFormalExpYears = Number(candidateProfile.years_of_experience);
+    candidateRelevantExpYears = candidateFormalExpYears;
+    if (jobConfig.academicEquivalent && candidateProfile.calculated_metrics?.total_epe_months) {
+      candidateRelevantExpYears = candidateProfile.calculated_metrics.total_epe_months / 12;
+    }
   }
 
   // Partial Experience Credit

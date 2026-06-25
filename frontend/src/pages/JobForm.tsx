@@ -365,10 +365,12 @@ export default function JobForm() {
         education: education,
         calculated_metrics: calculatedMetrics,
         years_of_experience: yearsOfExperience,
+        work_experience: workExperiences,
         embedded_skills: embeddedSkills
       };
       
       const jobConfig = {
+        jobTitle: jobDetails?.title || "",
         minTotalExpYears: jobDetails?.min_total_experience || 0,
         minRelevantExpYears: jobDetails?.min_relevant_experience || 0,
         academicEquivalent: jobDetails?.equivalent_experience_accepted || false,
