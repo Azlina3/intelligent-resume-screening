@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { evaluateCandidateMatch } from '../utils/MatchingEngine';
+import { evaluateCandidateMatch, isSkillMatch } from '../utils/MatchingEngine';
 
 export default function JobForm() {
   const navigate = useNavigate();
@@ -378,11 +378,79 @@ export default function JobForm() {
         strictEducationMatch: jobDetails?.strict_education_match || false
       };
 
+      // --- HYBRID MATCHING: LLM Equivalence Check ---
+      const unmatchedReqs = jobRequirements.filter(req => {
+        if (req.type_id === 4) return false;
+        const reqName = req.requirement_name.toLowerCase().trim();
+        const allCandidateSkills = [...technicalSkills, ...softSkills, ...languages.map((l: any) => l.language || l.name)];
+        return !isSkillMatch(reqName, allCandidateSkills, req.embedding, embeddedSkills);
+      });
+
+      const candEduTitle = education?.raw_title?.toLowerCase() || "";
+      const unmatchedDegreeReqs = jobRequirements.filter(req => {
+        if (req.type_id !== 4) return false;
+        const cleanName = req.requirement_name.trim().toLowerCase();
+        return !isSkillMatch(cleanName, [candEduTitle], req.embedding, embeddedSkills);
+      });
+
+      const allUnmatchedReqs = [...unmatchedReqs, ...unmatchedDegreeReqs];
+
+      let equivalenceMatches: string[] = [];
+      let aiInsights: any[] = [];
+      if (allUnmatchedReqs.length > 0) {
+        try {
+          const equivRes = await fetch("http://localhost:8000/api/check-equivalence", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              candidate_skills: [...technicalSkills, ...softSkills, ...languages.map((l: any) => l.language || l.name)],
+              candidate_experience: workExperiences.map((exp: any) => ({
+                role: exp.role,
+                summary: exp.summary
+              })),
+              unmatched_requirements: allUnmatchedReqs.map(r => r.requirement_name)
+            })
+          });
+          if (equivRes.ok) {
+            const equivData = await equivRes.json();
+            aiInsights = equivData.matches?.filter((m: any) => m.matched) || [];
+            equivalenceMatches = aiInsights.map((m: any) => m.requirement);
+            console.log("AI Equivalence Matches:", equivData.matches);
+          }
+        } catch (err) {
+          console.error("AI Equivalence Check failed:", err);
+        }
+      }
+      // ---------------------------------------------
+
       const { finalPercentage, breakdown, requirementMatches } = evaluateCandidateMatch(
         jobRequirements,
         jobConfig,
-        candidateProfile
+        candidateProfile,
+        [] // STOP Auto-Scoring: Do not pass equivalenceMatches initially
       );
+
+      // 3.8 Generate AI Candidate Insight
+      let overarchingInsight = "";
+      try {
+        const insightRes = await fetch("http://localhost:8000/api/candidate-insight", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            candidate_skills: [...technicalSkills, ...softSkills, ...languages.map((l: any) => l.language || l.name)],
+            job_requirements: jobRequirements.map(req => req.requirement_name),
+            matched_requirements: requirementMatches?.filter(rm => rm.score_value === 100).map(rm => rm.criteria) || [],
+            candidate_education: education?.raw_title || "",
+            candidate_experience: workExperiences.map((exp: any) => exp.role).join(", ")
+          })
+        });
+        if (insightRes.ok) {
+          const insightData = await insightRes.json();
+          overarchingInsight = insightData.insight;
+        }
+      } catch (err) {
+        console.error("AI Insight Check failed:", err);
+      }
 
       const scoreId = crypto.randomUUID();
       const { error: scoreError } = await supabase
@@ -418,6 +486,25 @@ export default function JobForm() {
         const embedObj = embeddedSkills.find(s => s.name === skill);
         candidateDataToInsert.push({ application_id: applicationId, type_id: 2, extracted_value: skill, embedding: embedObj?.embedding });
       });
+
+      // Store AI Insights as type_id 15 with pending status
+      aiInsights.forEach(insight => {
+        candidateDataToInsert.push({ 
+          application_id: applicationId, 
+          type_id: 15, 
+          extracted_value: JSON.stringify({ requirement: insight.requirement, reason: insight.reason, status: 'pending' }) 
+        });
+      });
+
+      // Store AI Overall Insight as type_id 16
+      if (overarchingInsight) {
+        candidateDataToInsert.push({ 
+          application_id: applicationId, 
+          type_id: 16, 
+          extracted_value: overarchingInsight 
+        });
+      }
+
       // Note: Work Experiences, Languages, and Achievements are temporarily not inserted 
       // into candidate_data to avoid foreign key constraint errors since type_id 4, 5, 6 
       // do not exist in the requirement_type table. We will discuss the best schema for these!
