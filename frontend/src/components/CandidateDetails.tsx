@@ -46,6 +46,8 @@ export default function CandidateDetails({
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  
+  const [candidateSummary, setCandidateSummary] = useState<string | null>(null);
 
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectNotes, setRejectNotes] = useState('');
@@ -84,6 +86,7 @@ export default function CandidateDetails({
           candidate (*),
           job (*),
           score (
+            score_id,
             total_score,
             score_breakdown (*)
           )
@@ -110,11 +113,11 @@ export default function CandidateDetails({
 
       // We process languages separately for the UI, they shouldn't appear as additional skills
       const extractedSkills = [
-        ...(extData?.map((d: any) => d.extracted_value.toLowerCase()) || [])
+        ...(extData?.filter((d: any) => d.type_id === 1 || d.type_id === 2 || d.type_id === 3).map((d: any) => d.extracted_value.toLowerCase()) || [])
       ].filter(Boolean);
 
       const candidateEmbeddings = [
-        ...(extData?.map((d: any) => ({ name: d.extracted_value, embedding: d.embedding })) || [])
+        ...(extData?.filter((d: any) => d.type_id === 1 || d.type_id === 2 || d.type_id === 3).map((d: any) => ({ name: d.extracted_value, embedding: d.embedding })) || [])
       ].filter(Boolean);
 
       // Filter out Education Requirements (type_id = 4) from Skills Match
@@ -134,15 +137,33 @@ export default function CandidateDetails({
         skillsReqData.some((req: any) => req.requirement_name.toLowerCase() === b.criteria.toLowerCase())
       );
 
-      let matchedSkills: { name: string, is_mandatory: boolean }[] = [];
+      let matchedSkills: { name: string, is_mandatory: boolean, ai_reason?: string }[] = [];
       let missingSkills: { name: string, is_mandatory: boolean }[] = [];
+
+      const allAiInsights = extData
+        ?.filter((d: any) => d.type_id === 15)
+        .map((d: any) => {
+          try {
+            return { ...JSON.parse(d.extracted_value), id: d.data_id };
+          } catch (e) {
+            return null;
+          }
+        })
+        .filter(Boolean) || [];
+
+      const approvedInsights = allAiInsights.filter((ai: any) => ai.status === 'approved' || !ai.status); // Fallback for old data
+      const pendingInsights = allAiInsights.filter((ai: any) => ai.status === 'pending');
 
       // Always trust the backend's score breakdown for matched skills so the points perfectly align with the UI.
       if (skillsBreakdowns.length > 0) {
-        matchedSkills = skillsBreakdowns.filter((b: any) => Number(b.score_value) > 0).map((b: any) => ({
-          name: b.criteria,
-          is_mandatory: skillsReqData.find((req: any) => req.requirement_name.toLowerCase() === b.criteria.toLowerCase())?.is_mandatory || false
-        }));
+        matchedSkills = skillsBreakdowns.filter((b: any) => Number(b.score_value) > 0).map((b: any) => {
+          const aiInsight = approvedInsights.find((ai: any) => ai.requirement.toLowerCase() === b.criteria.toLowerCase());
+          return {
+            name: b.criteria,
+            is_mandatory: skillsReqData.find((req: any) => req.requirement_name.toLowerCase() === b.criteria.toLowerCase())?.is_mandatory || false,
+            ai_reason: aiInsight?.reason || null
+          };
+        });
         // Missing skills should be any skill currently required that wasn't matched
         missingSkills = skillsReqData
           .filter((req: any) => !matchedSkills.some((m: any) => m.name.toLowerCase() === req.requirement_name.toLowerCase()))
@@ -208,6 +229,8 @@ export default function CandidateDetails({
         matchedSkills,
         missingSkills,
         additionalSkills,
+        pendingInsights,
+        reqData,
         requiredCount: skillsReqData.length,
         skillsMatchPoints,
         maxSkillsPoints,
@@ -216,6 +239,9 @@ export default function CandidateDetails({
         mandatoryCount,
         optionalCount
       });
+      
+      const overallAiInsightData = extData?.find((d: any) => d.type_id === 16);
+      setCandidateSummary(overallAiInsightData ? overallAiInsightData.extracted_value : null);
       
     } catch (err: any) {
       console.error('Error fetching details:', err);
@@ -245,6 +271,62 @@ export default function CandidateDetails({
     } catch (err: any) {
       alert("Failed to reject candidate: " + err.message);
       setIsRejecting(false);
+    }
+  };
+
+  const handleApproveSkill = async (insight: any) => {
+    try {
+      // 1. Find the requirement to know how many points it's worth
+      const req = data.reqData.find((r: any) => r.requirement_name.toLowerCase() === insight.requirement.toLowerCase());
+      if (!req) {
+        alert("Requirement not found.");
+        return;
+      }
+      const points = req.is_mandatory ? 10 : 3;
+
+      // 2. Update extracted_data row to status = 'approved'
+      const updatedInsight = { requirement: insight.requirement, reason: insight.reason, status: 'approved' };
+      const { error: extError } = await supabase
+        .from('extracted_data')
+        .update({ extracted_value: JSON.stringify(updatedInsight) })
+        .eq('data_id', insight.id);
+      
+      if (extError) throw extError;
+
+      // 3. Insert a new score_breakdown row for this requirement
+      const { error: breakdownError } = await supabase
+        .from('score_breakdown')
+        .insert({
+          score_id: data.scoreData.score_id,
+          requirement_id: req.requirement_id,
+          criteria: req.requirement_name,
+          score_value: points
+        });
+      
+      if (breakdownError) throw breakdownError;
+
+      // 4. Recalculate total score
+      const newSkillsPoints = data.skillsMatchPoints + points;
+      // Cap at maxSkillsPoints just in case
+      const finalSkillsPoints = Math.min(newSkillsPoints, data.maxSkillsPoints);
+      
+      const maxPossiblePoints = data.maxSkillsPoints + 20; // 10 for edu, 10 for exp
+      const currentEduExpPoints = data.rawEdu + data.rawExp;
+      
+      const newTotalScore = Math.round(((finalSkillsPoints + currentEduExpPoints) / maxPossiblePoints) * 100);
+
+      // 5. Update score table
+      const { error: scoreUpdateError } = await supabase
+        .from('score')
+        .update({ total_score: newTotalScore })
+        .eq('score_id', data.scoreData.score_id);
+        
+      if (scoreUpdateError) throw scoreUpdateError;
+
+      // Refresh data
+      fetchData();
+    } catch (err: any) {
+      alert("Failed to approve skill: " + err.message);
     }
   };
 
@@ -351,6 +433,8 @@ export default function CandidateDetails({
           </div>
         )}
 
+
+
         {/* 2-Column Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
@@ -445,13 +529,21 @@ export default function CandidateDetails({
                   <div className="flex items-center text-[#0f172a] font-semibold mb-4">
                     <CheckCircleIcon /> Matched Skills
                   </div>
-                  <div className="flex gap-2 flex-wrap ml-7">
+                  <div className="flex flex-col gap-3 ml-7">
                     {data.matchedSkills.length > 0 ? (
                       data.matchedSkills.map((s: any, i: number) => (
-                        <span key={i} className="px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full flex items-center">
-                          {s.name}
-                          {s.is_mandatory && <span className="ml-1.5 text-red-500" title="Mandatory Requirement">★</span>}
-                        </span>
+                        <div key={i} className="flex flex-col items-start">
+                          <span className="px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full flex items-center">
+                            {s.name}
+                            {s.is_mandatory && <span className="ml-1.5 text-red-500" title="Mandatory Requirement">★</span>}
+                            {s.ai_reason && <span className="ml-2 text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded uppercase font-bold tracking-wider border border-indigo-200">AI Evaluated</span>}
+                          </span>
+                          {s.ai_reason && (
+                            <div className="mt-1.5 ml-3 text-xs text-slate-600 bg-indigo-50 border border-indigo-100 p-2 rounded-lg max-w-lg shadow-sm">
+                              <span className="font-semibold text-indigo-800">Insight:</span> {s.ai_reason}
+                            </div>
+                          )}
+                        </div>
                       ))
                     ) : (
                       <span className="text-sm text-slate-400">None extracted</span>
@@ -476,6 +568,41 @@ export default function CandidateDetails({
                     )}
                   </div>
                 </div>
+
+                {data.pendingInsights && data.pendingInsights.length > 0 && (
+                  <div>
+                    <div className="flex items-center text-indigo-700 font-semibold mb-4 text-lg font-serif">
+                      ✨ AI Suggested Matches
+                    </div>
+                    <div className="flex flex-col gap-4 ml-7">
+                      {data.pendingInsights.map((insight: any, i: number) => {
+                        const req = data.reqData.find((r: any) => r.requirement_name.toLowerCase() === insight.requirement.toLowerCase());
+                        return (
+                          <div key={i} className="flex flex-col items-start bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl shadow-sm relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-400"></div>
+                            <div className="flex justify-between items-center w-full mb-2">
+                              <span className="font-bold text-indigo-900 flex items-center">
+                                {insight.requirement}
+                                {req?.is_mandatory && <span className="ml-1.5 text-red-500 text-sm" title="Mandatory Requirement">★</span>}
+                              </span>
+                              <button
+                                onClick={() => handleApproveSkill(insight)}
+                                className="px-3 py-1.5 bg-white text-indigo-600 border border-indigo-200 text-xs font-bold rounded hover:bg-indigo-50 transition-colors shadow-sm focus:ring-2 focus:ring-indigo-300 flex items-center gap-1"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                                Add Skill
+                              </button>
+                            </div>
+                            <div className="text-sm text-indigo-800">
+                              <span className="font-semibold mr-1">Insight:</span>
+                              {insight.reason}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <div className="flex items-center text-[#0f172a] font-semibold mb-4">
@@ -592,11 +719,23 @@ export default function CandidateDetails({
                   <LinkIcon />
                   <div className="ml-4">
                     <div className="text-xs text-slate-400 font-medium mb-0.5">Portfolio Link</div>
-                    <div className="text-sm font-medium text-slate-800">
+                    <div className="text-sm font-medium text-slate-800 flex flex-col gap-1">
                       {data.portfolio_link ? (
-                        <a href={data.portfolio_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
-                          {data.portfolio_link}
-                        </a>
+                        (() => {
+                          try {
+                            const links = JSON.parse(data.portfolio_link);
+                            if (Array.isArray(links) && links.length > 0) {
+                              return links.map((link, idx) => (
+                                <a key={idx} href={link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all block">
+                                  {link}
+                                </a>
+                              ));
+                            }
+                            return <a href={data.portfolio_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all block">{data.portfolio_link}</a>;
+                          } catch(e) {
+                            return <a href={data.portfolio_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all block">{data.portfolio_link}</a>;
+                          }
+                        })()
                       ) : 'Not provided'}
                     </div>
                   </div>
@@ -766,6 +905,33 @@ export default function CandidateDetails({
                 )}
               </div>
             </div>
+
+            {candidateSummary && (
+              <div className="bg-white rounded-xl border border-slate-200 p-7 shadow-sm text-left mt-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <h3 className="text-lg font-serif font-bold text-[#0f172a]">✨ AI Insight</h3>
+                </div>
+                <div className="space-y-3">
+                  {candidateSummary.split('\n').filter((line: string) => line.trim() !== '').map((line: string, i: number) => {
+                    const cleanLine = line.replace(/^[-*]\s*/, '');
+                    const parts = cleanLine.split(/(\*\*.*?\*\*)/g);
+                    return (
+                      <p key={i} className="text-[13.5px] text-slate-600 leading-relaxed flex items-start gap-2.5">
+                        <span className="text-indigo-400 font-bold mt-0.5">•</span>
+                        <span>
+                          {parts.map((part, j) => {
+                            if (part.startsWith('**') && part.endsWith('**')) {
+                              return <strong key={j} className="font-bold text-slate-800">{part.slice(2, -2)}</strong>;
+                            }
+                            return <span key={j}>{part}</span>;
+                          })}
+                        </span>
+                      </p>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
           </div>
 

@@ -34,9 +34,16 @@ export function isSkillMatch(
   requirementName: string, 
   candidateSkills: string[],
   reqEmbedding?: number[] | string,
-  candidateEmbeddings: { name: string, embedding: number[] | string }[] = []
+  candidateEmbeddings: { name: string, embedding: number[] | string }[] = [],
+  equivalenceMatches: string[] = []
 ): boolean {
   
+  // 0. Check if this requirement is in the AI-approved equivalence matches
+  const reqLower = requirementName.toLowerCase().trim();
+  if (equivalenceMatches.some(e => e.toLowerCase().trim() === reqLower)) {
+    return true;
+  }
+
   // 1. Try Semantic Vector Match if embeddings exist
   let parsedReqEmbedding: number[] | null = null;
   if (reqEmbedding) {
@@ -107,7 +114,8 @@ export function isSkillMatch(
 export function evaluateCandidateMatch(
   jobRequirements: JobRequirement[],
   jobConfig: JobConfig,
-  candidateProfile: any
+  candidateProfile: any,
+  equivalenceMatches: string[] = []
 ) {
   let maxPossiblePoints = 0;
   
@@ -142,7 +150,7 @@ export function evaluateCandidateMatch(
     
     let reqPoints = 0;
     // Check if requirement exists in skills or languages
-    if (isSkillMatch(reqName, allCandidateSkills, req.embedding, candEmbeddings)) {
+    if (isSkillMatch(reqName, allCandidateSkills, req.embedding, candEmbeddings, equivalenceMatches)) {
       reqPoints = itemWeight;
       if (req.is_mandatory) {
         mandatoryPoints += itemWeight;
@@ -261,7 +269,7 @@ export function evaluateCandidateMatch(
       const candEmbeddings = candidateProfile.embedded_skills || [];
       const hasDegreeMatch = degreeRequirements.some(req => {
         const cleanName = req.requirement_name.trim().toLowerCase();
-        const matched = isSkillMatch(cleanName, [candidateProfile.education?.raw_title?.toLowerCase() || ""], req.embedding, candEmbeddings);
+        const matched = isSkillMatch(cleanName, [candidateProfile.education?.raw_title?.toLowerCase() || ""], req.embedding, candEmbeddings, equivalenceMatches);
         if (matched && req.requirement_id) {
           requirementMatches.push({
             requirement_id: req.requirement_id,

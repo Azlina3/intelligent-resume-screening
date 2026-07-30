@@ -17,47 +17,47 @@ export default function Jobs({ onViewRanking, departmentFilterId, userRole }: Jo
   const [rejectionNotes, setRejectionNotes] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  useEffect(() => {
-    const fetchJobs = async () => {
-      let query = supabase
-        .from('job')
-        .select(`
-          *,
-          job_department (
-            department_name
-          ),
-          application (
-            application_id,
-            application_status
-          )
-        `);
+  const fetchJobs = async () => {
+    let query = supabase
+      .from('job')
+      .select(`
+        *,
+        job_department (
+          department_name
+        ),
+        application (
+          application_id,
+          application_status
+        )
+      `);
 
-      if (departmentFilterId) {
-        query = query.eq('department_id', departmentFilterId);
-      }
+    if (departmentFilterId) {
+      query = query.eq('department_id', departmentFilterId);
+    }
 
-      const { data, error } = await query.order('created_at', { ascending: false });
-        
-      if (data) {
-        const now = new Date().getTime();
-        const updatedJobs = data.map(job => {
-          if (job.job_status === 'active' && job.application_deadline) {
-            const diffTime = new Date(job.application_deadline).getTime() - now;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            if (diffDays < 0) {
-              job.job_status = 'closed';
-              supabase.from('job').update({ job_status: 'closed' }).eq('job_id', job.job_id).then();
-            }
+    const { data, error } = await query.order('created_at', { ascending: false });
+      
+    if (data) {
+      const now = new Date().getTime();
+      const updatedJobs = data.map(job => {
+        if (job.job_status === 'active' && job.application_deadline) {
+          const diffTime = new Date(job.application_deadline).getTime() - now;
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (diffDays < 0) {
+            job.job_status = 'closed';
+            supabase.from('job').update({ job_status: 'closed' }).eq('job_id', job.job_id).then();
           }
-          return job;
-        });
-        setJobs(updatedJobs);
-      } else if (error) {
-        console.error("Error fetching jobs:", error);
-      }
-      setLoading(false);
-    };
+        }
+        return job;
+      });
+      setJobs(updatedJobs);
+    } else if (error) {
+      console.error("Error fetching jobs:", error);
+    }
+    setLoading(false);
+  };
 
+  useEffect(() => {
     fetchJobs();
   }, [departmentFilterId]);
 
@@ -139,7 +139,7 @@ export default function Jobs({ onViewRanking, departmentFilterId, userRole }: Jo
       }
       
       alert("Job duplicated successfully!");
-      window.location.reload();
+      fetchJobs();
     } catch (error: any) {
       alert(`Error duplicating job: ${error.message}`);
     }

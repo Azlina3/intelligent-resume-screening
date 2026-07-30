@@ -2,6 +2,7 @@ import os
 import io
 import json
 import pdfplumber
+import hashlib
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -69,6 +70,10 @@ class ExtractedResume(BaseModel):
     languages: List[Language] = Field(default=[], description="List of languages known and proficiency levels.")
     achievements: List[str] = Field(default=[], description="List of notable achievements, awards, or hackathon wins.")
 
+# In-memory caches to guarantee 100% determinism for identical resumes/jobs
+PARSE_CACHE = {}
+EQUIVALENCE_CACHE = {}
+
 @app.post("/api/parse-resume")
 async def parse_resume(file: UploadFile = File(...)):
     # 1. Basic File Validation
@@ -81,6 +86,11 @@ async def parse_resume(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
         
+    # Check cache for identical file
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    if file_hash in PARSE_CACHE:
+        return PARSE_CACHE[file_hash]
+        
     # 3. Parse Document natively using Google GenAI (Supports Image-based PDFs!)
     try:
         client = genai.Client() # Assumes GEMINI_API_KEY is available in environment
@@ -92,7 +102,7 @@ async def parse_resume(file: UploadFile = File(...)):
         Important Guidelines:
         1. Soft Skills: Extract a maximum of 3-5 behavioral soft skills (e.g., "Public Speaking," "Team Leadership") only if they are explicitly supported by facts in the resume text.
         2. Portfolio Links: Search the header block of the document for any string matching patterns like github.com/* or linkedin.com/in/*. Extract these raw URLs into a standalone string array called portfolio_links.
-        3. Work Experience: Loop through their timeline and output a list of structured objects (Company Name, Role Title, duration_months, summary).
+        3. Work Experience: Loop through their timeline and output a list of structured objects (Company Name, Role Title, duration_months, summary). ONLY include formal jobs, professional roles, or official internships. STRICTLY DO NOT include academic projects, coursework, or personal projects in this array.
         4. Achievements: Extract qualitative achievements (like hackathons, awards, scholarships) into an array of strings.
         5. Languages: Extract known languages and proficiencies if listed.
         6. Equivalent Professional Experience (EPE): Calculate `total_epe_months`. Formal jobs/internships = 1x duration. Major academic projects = 0.7x duration. Hackathons = 0.5x duration (e.g., 1 month * 0.5 = 0.5 months). Sum these up in months.
@@ -109,12 +119,13 @@ async def parse_resume(file: UploadFile = File(...)):
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=ExtractedResume,
-                temperature=0.1, # Low temperature for more deterministic, fact-based extraction
+                temperature=0.0, # Zero temperature for completely deterministic extraction
             ),
         )
         
         # The response.text is guaranteed by the SDK to be a JSON string matching the ExtractedResume schema
         parsed_data = json.loads(response.text)
+        PARSE_CACHE[file_hash] = parsed_data
         return parsed_data
         
     except Exception as e:
@@ -146,6 +157,103 @@ async def embed_skills(request: EmbedRequest):
         return {"embeddings": vector_arrays}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate embeddings: {str(e)}")
+
+class EquivalenceRequest(BaseModel):
+    candidate_skills: List[str]
+    candidate_experience: List[dict]
+    unmatched_requirements: List[str]
+
+class EquivalenceMatch(BaseModel):
+    requirement: str = Field(description="The unmatched requirement string being checked.")
+    matched: bool = Field(description="True if candidate has this skill or a functionally equivalent/implied skill, False otherwise.")
+    reason: str = Field(description="A brief explanation of why this was matched or not.")
+
+class EquivalenceResponse(BaseModel):
+    matches: List[EquivalenceMatch]
+
+@app.post("/api/check-equivalence")
+async def check_equivalence(request: EquivalenceRequest):
+    try:
+        if not request.unmatched_requirements:
+            return {"matches": []}
+            
+        req_hash = hashlib.sha256(request.model_dump_json().encode('utf-8')).hexdigest()
+        if req_hash in EQUIVALENCE_CACHE:
+            return EQUIVALENCE_CACHE[req_hash]
+            
+        client = genai.Client()
+        prompt = f"""
+        You are an expert technical recruiter screening candidates for job requirements.
+        We have calculated cosine similarities between the job requirements and the candidate's skills,
+        but the following requirements did NOT have a close direct match:
+        {request.unmatched_requirements}
+        
+        Candidate's Extracted Skills:
+        {request.candidate_skills}
+        
+        Candidate's Work Experience:
+        {json.dumps(request.candidate_experience)}
+        
+        For each unmatched requirement, evaluate if:
+        1. The candidate possesses an equivalent/substitute technology (e.g. they have Vue.js or Angular and the requirement is React; they have Django or Flask and the requirement is FastAPI).
+        2. The candidate possesses the skill implicitly based on their experience or other skills (e.g. they have React/Vue experience so they implicitly have HTML/CSS/JavaScript; they have Python experience so they implicitly have scripting/backend programming).
+        3. The candidate has a broad version of the skill (e.g., they have 'Web Development' and the requirement is 'HTML').
+        
+        Be fair, reasonable, and avoid penalizing candidates for slight syntax variations or equivalent tools in the same stack category.
+        """
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=EquivalenceResponse,
+                temperature=0.0,
+            )
+        )
+        
+        parsed_data = json.loads(response.text)
+        EQUIVALENCE_CACHE[req_hash] = parsed_data
+        return parsed_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI equivalence check failed: {str(e)}")
+
+class CandidateInsightRequest(BaseModel):
+    candidate_skills: List[str]
+    job_requirements: List[str]
+    matched_requirements: List[str]
+    candidate_experience: str = ""
+    candidate_education: str = ""
+
+@app.post("/api/candidate-insight")
+async def generate_candidate_insight(request: CandidateInsightRequest):
+    try:
+        prompt = f"""
+        You are an expert HR AI assistant. Write a short, professional bulleted summary explaining why this candidate is a good fit for the role.
+        
+        Job Requirements: {', '.join(request.job_requirements)}
+        Candidate's Raw Skills: {', '.join(request.candidate_skills)}
+        Candidate's Education: {request.candidate_education}
+        Candidate's Experience Level: {request.candidate_experience}
+        Requirements Successfully Matched (via exact or semantic match): {', '.join(request.matched_requirements)}
+        
+        CRITICAL INSTRUCTION: If the candidate was credited for any 'Requirements Successfully Matched' that they did NOT explicitly list in their 'Raw Skills', you MUST explicitly call this out as a strength (e.g., "Although the candidate did not explicitly state React, their strong foundational skills in HTML, CSS, and JavaScript demonstrate they have the necessary frontend capabilities"). 
+        
+        Keep it extremely concise and directed at the HR hiring manager.
+        Format your response as a strict bulleted list with 2-3 short bullet points. Each bullet point should start with a dash (-). Use Markdown bolding (**text**) to emphasize key skills and critical insights.
+        """
+        
+        client = genai.Client()
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3
+            )
+        )
+        return {"insight": response.text.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI insight generation failed: {str(e)}")
 
 # --- System Admin User Management Endpoints ---
 
