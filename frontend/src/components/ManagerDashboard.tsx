@@ -59,30 +59,126 @@ export default function ManagerDashboard({ userName, departmentId, departmentNam
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
   const [selectedJobForRanking, setSelectedJobForRanking] = useState<string>('All Positions');
   const [highlightedCandidateId, setHighlightedCandidateId] = useState<string | null>(null);
+  
+  // Dashboard Data States
   const [departmentActivities, setDepartmentActivities] = useState<any[]>([]);
+  const [candidatesAwaitingReview, setCandidatesAwaitingReview] = useState<number>(0);
+  const [openRolesCount, setOpenRolesCount] = useState<number>(0);
+  const [openRolesList, setOpenRolesList] = useState<string>('');
+  const [topCandidates, setTopCandidates] = useState<any[]>([]);
+  const [isDashboardLoading, setIsDashboardLoading] = useState<boolean>(true);
 
   useEffect(() => {
     if (currentView === 'dashboard' && departmentId) {
-      fetchDepartmentActivities();
+      fetchDashboardData();
     }
   }, [currentView, departmentId]);
 
-  const fetchDepartmentActivities = async () => {
+  const fetchDashboardData = async () => {
+    setIsDashboardLoading(true);
     try {
-      const { data: activitiesData, error: activitiesError } = await supabase
+      // 1. Fetch Department Activities
+      const { data: activitiesData } = await supabase
         .from('activity_log')
         .select('*')
         .eq('department_id', departmentId)
         .order('created_at', { ascending: false })
         .limit(10);
+      
+      setDepartmentActivities(activitiesData || []);
 
-      if (activitiesError) {
-        console.error("Error fetching department activities:", activitiesError);
-      } else {
-        setDepartmentActivities(activitiesData || []);
+      // 2. Fetch Open Roles
+      const { data: rolesData } = await supabase
+        .from('job')
+        .select('job_title')
+        .eq('department_id', departmentId)
+        .eq('job_status', 'active');
+        
+      if (rolesData) {
+        setOpenRolesCount(rolesData.length);
+        const uniqueTitles = Array.from(new Set(rolesData.map(r => r.job_title)));
+        setOpenRolesList(uniqueTitles.join(', '));
       }
+
+      // 3. Fetch Active Applications & Compute Ranking
+      const { data: scoreData } = await supabase
+        .from('score')
+        .select(`
+          score_id,
+          total_score,
+          rank,
+          application:application_id!inner (
+            application_id,
+            application_status,
+            candidate:candidate_id ( name ),
+            job:job_id!inner ( job_title, department_id, job_status )
+          ),
+          score_breakdown ( criteria, score_value )
+        `)
+        .eq('application.job.department_id', departmentId)
+        .eq('application.job.job_status', 'active');
+
+      if (scoreData) {
+        // Show fresh candidates that haven't been reviewed by anyone yet
+        const activeCandidates = scoreData.filter((item: any) => 
+          item.application?.application_status === 'Received'
+        );
+
+        setCandidatesAwaitingReview(activeCandidates.length);
+
+        const formattedCandidates = activeCandidates.map((item: any, index: number) => {
+          const breakdowns = item.score_breakdown || [];
+          
+          const skillsBreakdowns = breakdowns.filter((b: any) => 
+            b.criteria !== 'Education Match' && b.criteria !== 'Experience Match' && b.criteria !== 'Mandatory Requirements' && b.criteria !== 'Optional Requirements'
+          );
+          
+          let skillsMatchPoints = 0;
+          if (skillsBreakdowns.length > 0) {
+            skillsMatchPoints = skillsBreakdowns.reduce((sum: number, b: any) => sum + Number(b.score_value || 0), 0);
+          } else {
+            const mandatory = Number(breakdowns.find((b: any) => b.criteria === 'Mandatory Requirements')?.score_value || 0);
+            const optional = Number(breakdowns.find((b: any) => b.criteria === 'Optional Requirements')?.score_value || 0);
+            skillsMatchPoints = mandatory + optional;
+          }
+
+          const rawEdu = Number(breakdowns.find((b: any) => b.criteria === 'Education Match')?.score_value || 0);
+          const rawExp = Number(breakdowns.find((b: any) => b.criteria === 'Experience Match')?.score_value || 0);
+          
+          const totalScore = item.total_score || 0;
+          const candidatePointsEarned = skillsMatchPoints + rawEdu + rawExp;
+          
+          let maxPossiblePoints = 100;
+          if (totalScore > 0 && candidatePointsEarned > 0) {
+             maxPossiblePoints = (candidatePointsEarned / totalScore) * 100;
+          }
+          
+          const maxSkillsPoints = Math.max(1, maxPossiblePoints - 20);
+          const skillsMatch = Math.min(100, Math.round((skillsMatchPoints / maxSkillsPoints) * 100));
+
+          return {
+            id: item.application?.application_id,
+            name: item.application?.candidate?.name || 'Unknown',
+            job_title: item.application?.job?.job_title || 'Unknown',
+            status: item.application?.application_status,
+            overallScore: Math.round(item.total_score || 0),
+            skillsMatch,
+            originalRank: item.rank || index + 1
+          };
+        });
+
+        // Sort by overallScore (descending) and take top 5
+        formattedCandidates.sort((a, b) => b.overallScore - a.overallScore);
+        
+        // Re-assign display ranks based on sorting
+        const rankedCandidates = formattedCandidates.slice(0, 5).map((c, i) => ({ ...c, displayRank: i + 1 }));
+        setTopCandidates(rankedCandidates);
+      }
+
     } catch (err) {
-      console.error("Error fetching department activities:", err);
+      console.error("Error fetching dashboard data:", err);
+    } finally {
+      setIsDashboardLoading(false);
     }
   };
 
@@ -182,20 +278,20 @@ export default function ManagerDashboard({ userName, departmentId, departmentNam
                 <AlertIcon />
               </div>
             </div>
-            <div className="text-[38px] font-serif text-[#ea580c] mb-1 leading-none">8</div>
+            <div className="text-[38px] font-serif text-[#ea580c] mb-1 leading-none">{isDashboardLoading ? '-' : candidatesAwaitingReview}</div>
           </div>
 
           {/* Card 2: Open Engineering Roles */}
           <div className="bg-white rounded-xl border border-slate-200 p-7 shadow-sm flex flex-col text-left">
             <div className="flex justify-between items-start mb-4">
-              <span className="text-slate-500 text-sm font-medium">Open Engineering Roles</span>
+              <span className="text-slate-500 text-sm font-medium">Open Roles</span>
               <div className="p-2 bg-blue-50/50 rounded-lg border border-blue-100">
                 <BriefcaseIcon />
               </div>
             </div>
-            <div className="text-[38px] font-serif text-[#1a56db] mb-5 leading-none">2</div>
+            <div className="text-[38px] font-serif text-[#1a56db] mb-5 leading-none">{isDashboardLoading ? '-' : openRolesCount}</div>
             <div className="mt-auto">
-              <p className="text-slate-400 text-[13px]">Software Engineer, DevOps Architect</p>
+              <p className="text-slate-400 text-[13px] truncate">{openRolesList || 'No active roles'}</p>
             </div>
           </div>
 
@@ -222,7 +318,7 @@ export default function ManagerDashboard({ userName, departmentId, departmentNam
             <section className="bg-white rounded-xl border border-slate-200 shadow-sm text-left overflow-hidden flex flex-col h-full">
               <div className="p-8 pb-6 border-b border-slate-100">
                 <h3 className="text-xl font-serif font-bold text-slate-800 mb-1">Awaiting Your Judgment</h3>
-                <p className="text-slate-500 text-[14px]">HR-screened candidates requiring your final approval to interview</p>
+                <p className="text-slate-500 text-[14px]">Fresh candidates that have not been reviewed yet</p>
               </div>
               
               <div className="overflow-x-auto">
@@ -238,90 +334,36 @@ export default function ManagerDashboard({ userName, departmentId, departmentNam
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     
-                    {/* Row 1 */}
-                    <tr className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-5 px-8 font-semibold text-slate-800 text-[15px]">Daniel Hakim</td>
-                      <td className="py-5 px-4 text-slate-500 text-[14px]">Software Engineer</td>
-                      <td className="py-5 px-4">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[12px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                          Rank #1
-                        </span>
-                      </td>
-                      <td className="py-5 px-4 font-bold text-emerald-600">94%</td>
-                      <td className="py-5 px-8">
-                        <button className="bg-[#1a56db] hover:bg-blue-700 text-white text-[13px] font-medium py-2 px-4 rounded-lg transition-colors">
-                          Review Resume
-                        </button>
-                      </td>
-                    </tr>
-
-                    {/* Row 2 */}
-                    <tr className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-5 px-8 font-semibold text-slate-800 text-[15px]">Nurul Aisyah</td>
-                      <td className="py-5 px-4 text-slate-500 text-[14px]">Software Engineer</td>
-                      <td className="py-5 px-4">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[12px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                          Rank #2
-                        </span>
-                      </td>
-                      <td className="py-5 px-4 font-bold text-emerald-600">91%</td>
-                      <td className="py-5 px-8">
-                        <button className="bg-[#1a56db] hover:bg-blue-700 text-white text-[13px] font-medium py-2 px-4 rounded-lg transition-colors">
-                          Review Resume
-                        </button>
-                      </td>
-                    </tr>
-
-                    {/* Row 3 */}
-                    <tr className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-5 px-8 font-semibold text-slate-800 text-[15px]">Wei Chen</td>
-                      <td className="py-5 px-4 text-slate-500 text-[14px]">DevOps Architect</td>
-                      <td className="py-5 px-4">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[12px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                          Rank #1
-                        </span>
-                      </td>
-                      <td className="py-5 px-4 font-bold text-blue-600">89%</td>
-                      <td className="py-5 px-8">
-                        <button className="bg-[#1a56db] hover:bg-blue-700 text-white text-[13px] font-medium py-2 px-4 rounded-lg transition-colors">
-                          Review Resume
-                        </button>
-                      </td>
-                    </tr>
-
-                    {/* Row 4 */}
-                    <tr className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-5 px-8 font-semibold text-slate-800 text-[15px]">Priya Sharma</td>
-                      <td className="py-5 px-4 text-slate-500 text-[14px]">Software Engineer</td>
-                      <td className="py-5 px-4">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[12px] font-bold bg-orange-100 text-orange-800 border border-orange-200">
-                          Rank #3
-                        </span>
-                      </td>
-                      <td className="py-5 px-4 font-bold text-blue-600">87%</td>
-                      <td className="py-5 px-8">
-                        <button className="bg-[#1a56db] hover:bg-blue-700 text-white text-[13px] font-medium py-2 px-4 rounded-lg transition-colors">
-                          Review Resume
-                        </button>
-                      </td>
-                    </tr>
-
-                    {/* Row 5 */}
-                    <tr className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-5 px-8 font-semibold text-slate-800 text-[15px]">Marcus Lee</td>
-                      <td className="py-5 px-4 text-slate-500 text-[14px]">DevOps Architect</td>
-                      <td className="py-5 px-4">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[12px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                          Rank #2
-                        </span>
-                      </td>
-                      <td className="py-5 px-4 font-bold text-blue-600">85%</td>
-                      <td className="py-5 px-8">
-                        <button className="bg-[#1a56db] hover:bg-blue-700 text-white text-[13px] font-medium py-2 px-4 rounded-lg transition-colors">
-                          Review Resume
-                        </button>
-                      </td>
-                    </tr>
+                    {isDashboardLoading ? (
+                      <tr><td colSpan={5} className="py-8 text-center text-slate-500">Loading...</td></tr>
+                    ) : topCandidates.length === 0 ? (
+                      <tr><td colSpan={5} className="py-8 text-center text-slate-500">No active candidates found.</td></tr>
+                    ) : (
+                      topCandidates.map((candidate, index) => (
+                        <tr key={candidate.id || index} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-5 px-8 font-semibold text-slate-800 text-[15px]">{candidate.name}</td>
+                          <td className="py-5 px-4 text-slate-500 text-[14px]">{candidate.job_title}</td>
+                          <td className="py-5 px-4">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[12px] font-bold border ${
+                              candidate.displayRank === 1 ? 'bg-amber-100 text-amber-800 border-amber-200' : 
+                              candidate.displayRank === 2 ? 'bg-slate-100 text-slate-600 border-slate-200' :
+                              'bg-orange-100 text-orange-800 border-orange-200'
+                            }`}>
+                              Rank #{candidate.displayRank}
+                            </span>
+                          </td>
+                          <td className="py-5 px-4 font-bold text-emerald-600">{candidate.overallScore}%</td>
+                          <td className="py-5 px-8">
+                            <button 
+                              onClick={() => { setSelectedApplicationId(candidate.id); setCurrentView('candidate-details'); }}
+                              className="bg-[#1a56db] hover:bg-blue-700 text-white text-[13px] font-medium py-2 px-4 rounded-lg transition-colors"
+                            >
+                              Review Resume
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
 
                   </tbody>
                 </table>

@@ -3,7 +3,8 @@ import { supabase } from '../supabaseClient';
 export async function logActivity(
   actionHeadline: string,
   actionDetail: string,
-  actionType: 'success' | 'info' | 'warning' | 'error' = 'info'
+  actionType: 'success' | 'info' | 'warning' | 'error' = 'info',
+  departmentIdOverride?: number
 ) {
   try {
     // Get the current user
@@ -14,21 +15,23 @@ export async function logActivity(
     }
 
     const userId = userData.user.id;
+    let departmentId = departmentIdOverride;
 
-    // Fetch the staff_user record to get department_id
-    const { data: staffData } = await supabase
-      .from('staff_user')
-      .select('department_id')
-      .eq('user_id', userId)
-      .single();
-
-    const departmentId = staffData?.department_id || 1;
+    // Fetch the staff_user record to get department_id if no override provided
+    if (!departmentId) {
+      const { data: staffData } = await supabase
+        .from('staff_user')
+        .select('department_id')
+        .eq('user_id', userId)
+        .single();
+      departmentId = staffData?.department_id || 1;
+    }
 
     const { error } = await supabase
       .from('activity_log')
       .insert([
         {
-          staff_id: userId,
+          user_id: userId,
           department_id: departmentId,
           action_headline: actionHeadline,
           action_detail: actionDetail,

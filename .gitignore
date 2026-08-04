@@ -1,2 +1,4 @@
 .agent/
 .agents/
+backend/check.py
+backend/test_db.py
