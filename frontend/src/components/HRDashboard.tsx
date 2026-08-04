@@ -8,6 +8,8 @@ import Ranking from './Ranking';
 import CandidateDetails from './CandidateDetails';
 import EmailTemplates from '../pages/EmailTemplates';
 import Templates from './Templates';
+import DatePicker from './DatePicker';
+import TimePicker from './TimePicker';
 import { formatTimeAgo, getActionTypeColor } from '../utils/dateUtils';
 
 // Icon components
@@ -94,6 +96,12 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
   const [actionItems, setActionItems] = useState<any[]>([]);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
 
+  // Reschedule Modal State
+  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
+  const [selectedInterviewForReschedule, setSelectedInterviewForReschedule] = useState<any>(null);
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('');
+
   useEffect(() => {
     if (currentView === 'dashboard') {
       fetchDashboardData();
@@ -128,6 +136,7 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
             job ( job_title )
           )
         `)
+        .eq('status', 'scheduled')
         .gte('scheduled_at', new Date().toISOString())
         .order('scheduled_at', { ascending: true })
         .limit(5);
@@ -189,18 +198,38 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
         setActionItems(draftJobs || []);
       }
 
-      // 6. Fetch Recent Activities
-      const { data: activitiesData, error: activitiesError } = await supabase
+      // 6. Fetch Recent Activities (Combine explicit logs and new applications)
+      const { data: activitiesData } = await supabase
         .from('activity_log')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(10);
 
-      if (activitiesError) {
-        console.error("Error fetching activities:", activitiesError);
-      } else {
-        setRecentActivities(activitiesData || []);
-      }
+      const { data: recentAppsData } = await supabase
+        .from('application')
+        .select(`
+          application_id,
+          applied_at,
+          candidate ( name ),
+          job ( job_title )
+        `)
+        .order('applied_at', { ascending: false })
+        .limit(10);
+
+      // Map applications into activity log format
+      const mappedApps = (recentAppsData || []).map((app: any) => ({
+        log_id: `app-${app.application_id}`,
+        created_at: app.applied_at,
+        action_headline: 'New Application Received',
+        action_detail: `${app.candidate?.name || 'A candidate'} applied for ${app.job?.job_title || 'a role'}.`,
+        action_type: 'success'
+      }));
+
+      // Merge, sort descending by date, and take top 10
+      const combinedActivities = [...(activitiesData || []), ...mappedApps];
+      combinedActivities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      
+      setRecentActivities(combinedActivities.slice(0, 10));
 
     } catch (err) {
       console.error("Error fetching dashboard data:", err);
@@ -210,6 +239,65 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
     e.preventDefault();
     await supabase.auth.signOut();
     navigate('/login');
+  };
+
+  const handleCancelInterview = async (interviewId: string) => {
+    if (window.confirm("Are you sure you want to cancel this interview? The candidate's status will remain On Hold.")) {
+      try {
+        const { error } = await supabase.from('interview').update({ status: 'cancelled' }).eq('interview_id', interviewId);
+        if (error) throw error;
+        
+        // Refresh dashboard data
+        fetchDashboardData();
+      } catch (err) {
+        console.error("Error canceling interview:", err);
+        alert("Failed to cancel interview.");
+      }
+    }
+  };
+
+  const openRescheduleModal = (interview: any) => {
+    setSelectedInterviewForReschedule(interview);
+    const dateObj = new Date(interview.scheduled_at);
+    // Format to DD/MM/YYYY for DatePicker
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    setNewDate(`${day}/${month}/${year}`);
+    
+    // Format to Time string (e.g. 10:00 AM)
+    const timeString = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    setNewTime(timeString);
+    
+    setRescheduleModalOpen(true);
+  };
+
+  const handleRescheduleSubmit = async () => {
+    if (!selectedInterviewForReschedule || !newDate || !newTime) return;
+    try {
+       const [day, month, year] = newDate.split('/');
+       const parsedDateStr = `${month}/${day}/${year} ${newTime}`;
+       const scheduledDate = new Date(parsedDateStr);
+       
+       if (isNaN(scheduledDate.getTime())) {
+         alert("Invalid date or time");
+         return;
+       }
+
+       const { error } = await supabase
+         .from('interview')
+         .update({ scheduled_at: scheduledDate.toISOString() })
+         .eq('interview_id', selectedInterviewForReschedule.interview_id);
+       
+       if (error) throw error;
+       
+       setRescheduleModalOpen(false);
+       setSelectedInterviewForReschedule(null);
+       fetchDashboardData();
+    } catch (err) {
+       console.error("Error rescheduling interview:", err);
+       alert("Failed to reschedule interview.");
+    }
   };
 
   return (
@@ -480,54 +568,87 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
           <div className="flex flex-col gap-8">
             {/* Upcoming Interview Schedule */}
             <section className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm text-left">
-              <h3 className="text-lg font-serif font-bold text-slate-800 mb-6">Upcoming Interviews</h3>
-              <div className="space-y-4">
-                {upcomingInterviews.length === 0 ? (
-                  <p className="text-slate-500 text-sm italic">No interviews scheduled coming up.</p>
-                ) : (
-                  upcomingInterviews.map(interview => (
-                    <div key={interview.interview_id} className="flex items-center p-5 border border-slate-100/50 rounded-xl hover:border-slate-200 transition-colors bg-slate-50/50">
-                      <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mr-5 border border-blue-100/50">
-                        <ClockIcon />
-                      </div>
-                      <div>
-                        <div className="text-[13px] font-bold text-blue-700 mb-0.5">
-                          {new Date(interview.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          <span className="text-slate-400 font-normal ml-2">{new Date(interview.scheduled_at).toLocaleDateString()}</span>
+              <h3 className="text-lg font-serif font-bold text-slate-800 mb-6 shrink-0">Upcoming Interviews</h3>
+              <div className="max-h-[320px] overflow-y-auto pr-3 -mr-3">
+                <div className="space-y-4">
+                  {upcomingInterviews.length === 0 ? (
+                    <p className="text-slate-500 text-sm italic">No interviews scheduled coming up.</p>
+                  ) : (
+                    upcomingInterviews.map(interview => (
+                      <div key={interview.interview_id} className="group flex items-center p-5 border border-slate-100/50 rounded-xl hover:border-slate-200 transition-colors bg-slate-50/50 relative">
+                        <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mr-5 border border-blue-100/50">
+                          <ClockIcon />
                         </div>
-                        <div className="text-[15px] font-bold text-slate-800">{interview.application?.candidate?.name || 'Unknown Candidate'}</div>
-                        <div className="text-[13px] text-slate-500 mt-0.5">{interview.application?.job?.job_title || 'Unknown Role'}</div>
+                        <div className="flex-1">
+                          <div className="text-[13px] font-bold text-blue-700 mb-0.5">
+                            {new Date(interview.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            <span className="text-slate-400 font-normal ml-2">{new Date(interview.scheduled_at).toLocaleDateString()}</span>
+                          </div>
+                          <div className="text-[15px] font-bold text-slate-800 pr-2">{interview.application?.candidate?.name || 'Unknown Candidate'}</div>
+                          <div className="text-[13px] text-slate-500 mt-0.5">{interview.application?.job?.job_title || 'Unknown Role'}</div>
+                          
+                          {interview.location_or_link && (
+                            <div className="text-[12px] text-slate-600 mt-2 flex items-start gap-1.5 bg-slate-100/70 p-2 rounded border border-slate-100">
+                              <span className="font-semibold text-slate-700 shrink-0">
+                                {interview.location_or_link.toLowerCase().includes('http') ? 'Online:' : 'Location:'}
+                              </span>
+                              {interview.location_or_link.toLowerCase().includes('http') ? (
+                                <a href={interview.location_or_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline break-all">
+                                  {interview.location_or_link}
+                                </a>
+                              ) : (
+                                <span className="break-words">{interview.location_or_link}</span>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Action Buttons (visible on hover) */}
+                          <div className="hidden group-hover:flex items-center gap-2 mt-3">
+                            <button 
+                              onClick={() => openRescheduleModal(interview)}
+                              className="px-3 py-1.5 bg-white border border-slate-200 rounded text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors shadow-sm"
+                            >
+                              Reschedule
+                            </button>
+                            <button 
+                              onClick={() => handleCancelInterview(interview.interview_id)}
+                              className="px-3 py-1.5 bg-white border border-slate-200 rounded text-xs font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shadow-sm"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
             </section>
 
             {/* Recent Activity */}
             <section className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm text-left">
-              <h3 className="text-lg font-serif font-bold text-slate-800 mb-8">Recent Activity</h3>
-              <div className="space-y-7 border-l-2 border-slate-100 ml-2 pl-6">
-
-                {recentActivities.length === 0 ? (
-                  <p className="text-slate-500 text-sm italic">No recent activity found.</p>
-                ) : (
-                  recentActivities.map((activity, index) => (
-                    <div key={activity.log_id || index} className="relative">
-                      <div className={`absolute -left-[31px] top-1.5 w-3 h-3 rounded-full ${getActionTypeColor(activity.action_type)} ring-4 ring-white`}></div>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-semibold text-slate-800 text-[14px]">{activity.action_headline}</div>
-                          <div className="text-slate-500 text-[13px] mt-0.5">{activity.action_detail}</div>
-                        </div>
-                        <div className="text-slate-400 text-[12px] flex items-center mt-0.5 whitespace-nowrap ml-4">
-                          <span className="mr-1">🕒</span> {formatTimeAgo(activity.created_at)}
+              <h3 className="text-lg font-serif font-bold text-slate-800 mb-8 shrink-0">Recent Activity</h3>
+              <div className="max-h-[320px] overflow-y-auto pr-3 -mr-3 pb-2">
+                <div className="space-y-7 border-l-2 border-slate-100 ml-2 pl-6">
+                  {recentActivities.length === 0 ? (
+                    <p className="text-slate-500 text-sm italic">No recent activity found.</p>
+                  ) : (
+                    recentActivities.map((activity, index) => (
+                      <div key={activity.log_id || index} className="relative">
+                        <div className={`absolute -left-[31px] top-1.5 w-3 h-3 rounded-full ${getActionTypeColor(activity.action_type)} ring-4 ring-white`}></div>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-semibold text-slate-800 text-[14px]">{activity.action_headline}</div>
+                            <div className="text-slate-500 text-[13px] mt-0.5">{activity.action_detail}</div>
+                          </div>
+                          <div className="text-slate-400 text-[12px] flex items-center mt-0.5 whitespace-nowrap ml-4">
+                            <span className="mr-1">🕒</span> {formatTimeAgo(activity.created_at)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
-                )}
-
+                    ))
+                  )}
+                </div>
               </div>
             </section>
 
@@ -577,6 +698,44 @@ export default function HRDashboard({ userName, userRole }: { userName?: string,
             <p className="text-slate-500 text-lg">The {currentView} view is coming soon.</p>
           </div>
         </main>
+      )}
+
+      {/* Reschedule Modal */}
+      {rescheduleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6">
+            <h3 className="text-xl font-serif font-bold text-slate-800 mb-2">Reschedule Interview</h3>
+            <p className="text-sm text-slate-500 mb-6">
+              Select a new date and time for {selectedInterviewForReschedule?.application?.candidate?.name}.
+            </p>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">New Date</label>
+                <DatePicker value={newDate} onChange={setNewDate} />
+              </div>
+              <div>
+                <label className="block text-[13px] font-medium text-slate-700 mb-1.5">New Time</label>
+                <TimePicker value={newTime} onChange={setNewTime} />
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <button 
+                onClick={() => { setRescheduleModalOpen(false); setSelectedInterviewForReschedule(null); }}
+                className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Close
+              </button>
+              <button 
+                onClick={handleRescheduleSubmit}
+                className="px-4 py-2 bg-blue-600 rounded-lg text-sm font-medium text-white hover:bg-blue-700 transition-colors shadow-sm"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

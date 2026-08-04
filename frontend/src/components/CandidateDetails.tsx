@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { isSkillMatch } from '../utils/MatchingEngine';
+import { logActivity } from '../utils/activityLogger';
 
 // --- Icons ---
 const ArrowLeftIcon = () => (
@@ -178,7 +179,7 @@ export default function CandidateDetails({
         
         missingSkills = skillsReqData.filter((req: any) => 
           !isSkillMatch(req.requirement_name, skillsToMatchAgainst, req.embedding, candidateEmbeddings)
-        ).map((r: any) => ({ name: r.requirement_name, is_mandatory: r.is_mandatory || false }));
+        ).map((req: any) => ({ name: req.requirement_name, is_mandatory: req.is_mandatory || false }));
       }
       
       const additionalSkills = extractedSkills
@@ -261,10 +262,17 @@ export default function CandidateDetails({
       const { error } = await supabase
         .from('application')
         .update({ 
-          manager_notes: rejectNotes.trim()
+          manager_notes: rejectNotes.trim(),
+          application_status: 'Unsuccessful'
         })
         .eq('application_id', data.application_id);
       if (error) throw error;
+      await logActivity(
+        'Candidate Rejected',
+        `Candidate ${data.candidate.name} rejected for ${data.job.job_title}.`,
+        'error',
+        data.job.department_id
+      );
       alert("Rejection note saved. HR has been notified.");
       setShowRejectInput(false);
       window.location.reload();
@@ -821,6 +829,12 @@ export default function CandidateDetails({
                         .update({ application_status: 'Shortlisted' })
                         .eq('application_id', data.application_id);
                       if (error) throw error;
+                      await logActivity(
+                        'Candidate Shortlisted',
+                        `Candidate ${data.candidate.name} shortlisted for ${data.job.job_title}.`,
+                        'info',
+                        data.job.department_id
+                      );
                       alert("Candidate successfully shortlisted!");
                       window.location.reload(); // Refresh to show new status
                     } catch (err: any) {
