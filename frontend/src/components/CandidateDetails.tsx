@@ -35,6 +35,18 @@ const LinkIcon = () => (
   <svg className="w-5 h-5 text-slate-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
 );
 
+// Helper to force standardized file downloads
+const getDownloadUrl = (url: string | null | undefined, desiredFilename: string) => {
+  if (!url) return '#';
+  try {
+    const urlObj = new URL(url);
+    urlObj.searchParams.set('download', desiredFilename);
+    return urlObj.toString();
+  } catch (e) {
+    return url;
+  }
+};
+
 export default function CandidateDetails({ 
   applicationId, 
   onBack,
@@ -900,23 +912,42 @@ export default function CandidateDetails({
                   </button>
                 )}
                 <a 
-                  href={data.resume_file || '#'}
+                  href={getDownloadUrl(data.resume_file, `${candidate?.name?.replace(/\s+/g, '_') || 'Candidate'}_Resume.pdf`)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"
                 >
                   Download Resume
                 </a>
-                {data.other_docs && (
-                  <a 
-                    href={data.other_docs}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"
-                  >
-                    Download Other Docs
-                  </a>
-                )}
+                {(() => {
+                  let docsArray: string[] = [];
+                  if (Array.isArray(data.other_docs)) {
+                    docsArray = data.other_docs;
+                  } else if (typeof data.other_docs === 'string') {
+                    try {
+                      const parsed = JSON.parse(data.other_docs);
+                      if (Array.isArray(parsed)) docsArray = parsed;
+                      else docsArray = [data.other_docs];
+                    } catch (e) {
+                      docsArray = [data.other_docs];
+                    }
+                  }
+                  return docsArray.length > 0 ? (
+                    <div className="flex flex-col gap-2 w-full mt-2">
+                      {docsArray.map((docUrl: string, idx: number) => (
+                        <a 
+                          key={idx}
+                          href={getDownloadUrl(docUrl, `${candidate?.name?.replace(/\s+/g, '_') || 'Candidate'}_Related_Doc_${idx + 1}.${docUrl.split('.').pop() || 'pdf'}`)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 rounded-lg text-sm font-medium transition-colors flex justify-center items-center"
+                        >
+                          Download Document {idx + 1}
+                        </a>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </div>
 
