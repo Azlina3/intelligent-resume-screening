@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { evaluateCandidateMatch, isSkillMatch } from '../utils/MatchingEngine';
@@ -11,6 +11,15 @@ export default function JobForm() {
   const [jobRequirements, setJobRequirements] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isClosed, setIsClosed] = useState(false);
+  const [isHR, setIsHR] = useState(false);
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) setIsHR(true);
+    };
+    checkSession();
+  }, []);
 
   const [resumeUploaded, setResumeUploaded] = useState(false);
   const [isLoadingResume, setIsLoadingResume] = useState(false);
@@ -133,6 +142,39 @@ export default function JobForm() {
     fetchJobData();
   }, [jobId]);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const handleCancelUpload = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIsLoadingResume(false);
+    setResumeFile(null);
+    setResumeName("");
+    setResumeUploaded(false);
+  };
+
+  const handleRemoveResume = () => {
+    setResumeFile(null);
+    setResumeName("");
+    setResumeUploaded(false);
+    
+    // Clear all extracted data
+    setFullName("");
+    setEmail("");
+    setPhone("");
+    setHighestEducation("");
+    setEducation(null);
+    setCalculatedMetrics(null);
+    setYearsOfExperience(0);
+    setTechnicalSkills([]);
+    setSoftSkills([]);
+    setWorkExperiences([]);
+    setPortfolios([]);
+    setLanguages([]);
+    setAchievements([]);
+  };
+
   const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -143,10 +185,13 @@ export default function JobForm() {
       const formData = new FormData();
       formData.append("file", file);
 
+      abortControllerRef.current = new AbortController();
+
       try {
         const response = await fetch("http://localhost:8000/api/parse-resume", {
           method: "POST",
           body: formData,
+          signal: abortControllerRef.current.signal
         });
 
         if (!response.ok) {
@@ -184,7 +229,14 @@ export default function JobForm() {
 
         setResumeUploaded(true);
       } catch (error: any) {
+        if (error.name === 'AbortError') {
+          console.log('Upload cancelled');
+          return;
+        }
         console.error("Error uploading resume:", error);
+        setResumeFile(null);
+        setResumeName("");
+        setResumeUploaded(false);
         alert(`Failed to parse resume: ${error.message}`);
       } finally {
         setIsLoadingResume(false);
@@ -517,8 +569,15 @@ export default function JobForm() {
       }
 
       try {
-        await navigator.clipboard.writeText(appReference);
-        alert(`Application submitted successfully!\n\nYour Application Reference is: ${appReference}\n(This code has been auto-copied to your clipboard. Please save it to track your application status later.)`);
+        // Idea 1: Save to LocalStorage so they don't even need to type it in next time
+        localStorage.setItem('aura_last_ref', appReference);
+        localStorage.setItem('aura_last_email', email);
+
+        // Idea 2: Copy FULL message to clipboard
+        const fullMessage = `Aura Careers Application\nJob: ${jobDetails?.job_title}\nTrack your status anytime at: http://localhost:5173/track-status\nYour Reference Code is: ${appReference}`;
+        await navigator.clipboard.writeText(fullMessage);
+
+        alert(`Application submitted successfully!\n\nYour Application Reference is: ${appReference}\n(This code has been auto-copied to your clipboard. Please keep it safe to track your application later.)`);
       } catch (err) {
         alert(`Application submitted successfully!\n\nYour Application Reference is: ${appReference}\nPlease save this code to track your application status later.`);
       }
@@ -598,22 +657,32 @@ export default function JobForm() {
     <main className="min-h-screen bg-[#fafafa] font-sans py-12 px-4 sm:px-6 lg:px-8 flex justify-center">
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 w-full max-w-4xl flex flex-col relative overflow-hidden">
         
-        {/* Header with Back Button */}
-        <div className="bg-white z-10 flex justify-start p-6 pb-0">
+        {/* Header with Navigation Links */}
+        <div className={`bg-white z-10 flex p-6 pb-0 ${isHR ? 'justify-between items-center' : 'justify-end'}`}>
+          {isHR && (
+            <button 
+              onClick={() => navigate(-1)}
+              className="flex items-center text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Jobs
+            </button>
+          )}
           <button 
-            onClick={() => navigate(-1)}
-            className="flex items-center text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium"
+            onClick={() => navigate('/track-status')}
+            className="flex items-center text-[#1d4ed8] hover:text-[#1e40af] transition-colors text-sm font-medium italic"
           >
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            Track Existing Application
+            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
-            Back to Jobs
           </button>
         </div>
 
         <div className="px-8 pb-12 pt-6 sm:px-12 sm:pb-16 text-left">
-          {/* Header */}
-          <div className="text-center mb-12">
+          <div className="text-center mb-12 mt-6">
             <h1 className="text-4xl font-serif font-bold text-[#0f172a] mb-3 tracking-tight">Job Application</h1>
             <p className="text-slate-500 text-base">Apply for {jobTitle} position {jobDetails?.location && `• ${jobDetails.location}`}</p>
           </div>
@@ -683,10 +752,17 @@ export default function JobForm() {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Upload Resume</label>
                   {isLoadingResume ? (
-                    <div className="border-2 border-dashed border-[#1d4ed8]/30 bg-[#1d4ed8]/5 rounded-xl p-8 text-center flex flex-col items-center justify-center animate-pulse">
+                    <div className="relative border-2 border-dashed border-[#1d4ed8]/30 bg-[#1d4ed8]/5 rounded-xl p-8 text-center flex flex-col items-center justify-center">
                       <div className="w-8 h-8 border-4 border-[#1d4ed8]/30 border-t-[#1d4ed8] rounded-full animate-spin mb-3"></div>
-                      <p className="text-sm font-medium text-slate-700">AI is reading and extracting your resume...</p>
+                      <p className="text-sm font-medium text-slate-700 animate-pulse">AI is reading and extracting your resume...</p>
                       <p className="text-xs text-slate-500 mt-1">This takes just a few seconds</p>
+                      <button 
+                        type="button" 
+                        onClick={handleCancelUpload}
+                        className="mt-4 px-4 py-1.5 bg-white border border-slate-300 text-slate-600 rounded-md text-xs font-medium hover:bg-slate-50 transition-colors shadow-sm"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   ) : !resumeUploaded ? (
                     <div className="relative border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:bg-slate-50 transition-colors cursor-pointer group">
@@ -695,6 +771,7 @@ export default function JobForm() {
                         accept=".pdf" 
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         onChange={handleResumeUpload}
+                        key={resumeName ? "loaded" : "empty"} // Force remount to clear file input value if needed
                       />
                       <div className="flex flex-col items-center justify-center">
                         <svg className="w-8 h-8 text-slate-400 mb-3 group-hover:text-[#1d4ed8] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -705,7 +782,17 @@ export default function JobForm() {
                       </div>
                     </div>
                   ) : (
-                    <div className="border-2 border-dashed border-[#1d4ed8]/30 bg-[#1d4ed8]/5 rounded-xl p-6 text-center">
+                    <div className="relative border-2 border-dashed border-[#1d4ed8]/30 bg-[#1d4ed8]/5 rounded-xl p-6 text-center group">
+                      <button 
+                        type="button"
+                        onClick={handleRemoveResume}
+                        className="absolute top-2 right-2 p-1.5 bg-white text-slate-400 hover:text-red-500 rounded-full shadow-sm border border-slate-200 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        title="Remove resume"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                       <div className="flex flex-col items-center justify-center">
                          <svg className="w-8 h-8 text-[#1d4ed8] mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />

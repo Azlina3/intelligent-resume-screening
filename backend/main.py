@@ -59,6 +59,8 @@ class CalculatedMetrics(BaseModel):
 
 # Define the Structured Data Schema using Pydantic
 class ExtractedResume(BaseModel):
+    is_valid_resume: bool = Field(default=True, description="STRICT VALIDATION: Set to True ONLY if the uploaded PDF is a genuine candidate resume/CV. Set to False if it is a presentation slide deck, report, lecture slide, assignment, invoice, certificate, or research paper.")
+    rejection_reason: Optional[str] = Field(default=None, description="Detailed explanation if is_valid_resume is False.")
     full_name: Optional[str] = Field(None, description="The candidate's full name.")
     email: Optional[str] = Field(None, description="Contact email address.")
     phone: Optional[str] = Field(None, description="Primary telephone or contact number. Must be formatted as a single string of digits with a leading '+' (e.g., +60123456789), without spaces, dashes, or parentheses.")
@@ -89,7 +91,11 @@ async def parse_resume(file: UploadFile = File(...)):
     # Check cache for identical file
     file_hash = hashlib.sha256(file_bytes).hexdigest()
     if file_hash in PARSE_CACHE:
-        return PARSE_CACHE[file_hash]
+        cached = PARSE_CACHE[file_hash]
+        if isinstance(cached, dict) and not cached.get("is_valid_resume", True):
+            # Enforce strict static error message from cache
+            raise HTTPException(status_code=400, detail="The uploaded PDF is not a resume.")
+        return cached
         
     # 3. Parse Document natively using Google GenAI (Supports Image-based PDFs!)
     try:
@@ -99,15 +105,18 @@ async def parse_resume(file: UploadFile = File(...)):
         You are an elite AI parsing agent. Your task is to read the attached candidate's resume document, 
         and strictly map it into the defined JSON structure. Extract all relevant information accurately.
 
-        Important Guidelines:
-        1. Soft Skills: Extract a maximum of 3-5 behavioral soft skills (e.g., "Public Speaking," "Team Leadership") only if they are explicitly supported by facts in the resume text.
-        2. Portfolio Links: Search the header block of the document for any string matching patterns like github.com/* or linkedin.com/in/*. Extract these raw URLs into a standalone string array called portfolio_links.
-        3. Work Experience: Loop through their timeline and output a list of structured objects (Company Name, Role Title, duration_months, summary). ONLY include formal jobs, professional roles, or official internships. STRICTLY DO NOT include academic projects, coursework, or personal projects in this array.
-        4. Achievements: Extract qualitative achievements (like hackathons, awards, scholarships) into an array of strings.
-        5. Languages: Extract known languages and proficiencies if listed.
-        6. Equivalent Professional Experience (EPE): Calculate `total_epe_months`. Formal jobs/internships = 1x duration. Major academic projects = 0.7x duration. Hackathons = 0.5x duration (e.g., 1 month * 0.5 = 0.5 months). Sum these up in months.
-        7. Education: Identify highest education. Provide `raw_title`. Map to `normalized_category` (must be exactly one of: 'No Requirement', 'SPM / O-Level', 'Diploma', 'Bachelor\\'s Degree', 'Master\\'s Degree', 'PhD'). Estimate `semantic_relevance_score` between 0.0 and 1.0 based on relevance to tech/software.
-        8. Phone Number: Standardize the extracted phone number format. Remove all spaces, dashes, and parentheses, and ensure it starts with a country code (e.g., +60123456789).
+        CRITICAL VALIDATION INSTRUCTION:
+        1. Document Classification & Validation: First, inspect the overall document structure. Determine if this document is a genuine Candidate Resume / CV (containing individual candidate profile, work history, personal contact, education). If the document is NOT a resume (e.g. it is a presentation slide deck, report, assignment, invoice, certificate, menu, etc.), set is_valid_resume = false and set rejection_reason = "The uploaded PDF is not a resume."
+
+        Important Extraction Guidelines (Only if is_valid_resume is true):
+        2. Soft Skills: Extract a maximum of 3-5 behavioral soft skills (e.g., "Public Speaking," "Team Leadership") only if they are explicitly supported by facts in the resume text.
+        3. Portfolio Links: Search the header block of the document for any string matching patterns like github.com/* or linkedin.com/in/*. Extract these raw URLs into a standalone string array called portfolio_links.
+        4. Work Experience: Loop through their timeline and output a list of structured objects (Company Name, Role Title, duration_months, summary). ONLY include formal jobs, professional roles, or official internships. STRICTLY DO NOT include academic projects, coursework, or personal projects in this array.
+        5. Achievements: Extract qualitative achievements (like hackathons, awards, scholarships) into an array of strings.
+        6. Languages: Extract known languages and proficiencies if listed.
+        7. Equivalent Professional Experience (EPE): Calculate `total_epe_months`. Formal jobs/internships = 1x duration. Major academic projects = 0.7x duration. Hackathons = 0.5x duration (e.g., 1 month * 0.5 = 0.5 months). Sum these up in months.
+        8. Education: Identify highest education. Provide `raw_title`. Map to `normalized_category` (must be exactly one of: 'No Requirement', 'SPM / O-Level', 'Diploma', 'Bachelor\\'s Degree', 'Master\\'s Degree', 'PhD'). Estimate `semantic_relevance_score` between 0.0 and 1.0 based on relevance to tech/software.
+        9. Phone Number: Standardize the extracted phone number format. Remove all spaces, dashes, and parentheses, and ensure it starts with a country code (e.g., +60123456789).
         """
         
         response = client.models.generate_content(
@@ -126,8 +135,15 @@ async def parse_resume(file: UploadFile = File(...)):
         # The response.text is guaranteed by the SDK to be a JSON string matching the ExtractedResume schema
         parsed_data = json.loads(response.text)
         PARSE_CACHE[file_hash] = parsed_data
+
+        if not parsed_data.get("is_valid_resume", True):
+            # Enforce the strict static error message requested by the user
+            raise HTTPException(status_code=400, detail="The uploaded PDF is not a resume.")
+
         return parsed_data
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI parsing connection or generation failed: {str(e)}")
 

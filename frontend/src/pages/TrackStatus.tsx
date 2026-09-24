@@ -10,6 +10,14 @@ export default function TrackStatus() {
   const [errorMsg, setErrorMsg] = useState('');
   const [result, setResult] = useState<any>(null);
 
+  // Read saved values from localStorage (Idea 1)
+  React.useEffect(() => {
+    const savedEmail = localStorage.getItem('aura_last_email');
+    const savedRef = localStorage.getItem('aura_last_ref');
+    if (savedEmail) setEmail(savedEmail);
+    if (savedRef) setReference(savedRef);
+  }, []);
+
   const handleTrack = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
